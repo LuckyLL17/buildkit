@@ -647,17 +647,53 @@ func (c *Controller) ListWorkers(ctx context.Context, r *controlapi.ListWorkersR
 	if err != nil {
 		return nil, err
 	}
+
+	if r.Profile != nil {
+		candidates, err := worker.MatchProfile(ctx, workers, fromAPICapabilityProfile(r.Profile))
+		if err != nil {
+			return nil, err
+		}
+		for _, cand := range candidates {
+			record := toPBWorkerRecord(cand.Worker)
+			record.Capability = toPBWorkerCapability(cand.Match)
+			resp.Record = append(resp.Record, record)
+		}
+		return resp, nil
+	}
+
 	for _, w := range workers {
-		resp.Record = append(resp.Record, &apitypes.WorkerRecord{
-			ID:              w.ID(),
-			Labels:          w.Labels(),
-			Platforms:       pb.PlatformsFromSpec(w.Platforms(true)),
-			GCPolicy:        toPBGCPolicy(w.GCPolicy()),
-			BuildkitVersion: toPBBuildkitVersion(w.BuildkitVersion()),
-			CDIDevices:      toPBCDIDevices(w.CDIManager()),
-		})
+		resp.Record = append(resp.Record, toPBWorkerRecord(w))
 	}
 	return resp, nil
+}
+
+func toPBWorkerRecord(w worker.Worker) *apitypes.WorkerRecord {
+	return &apitypes.WorkerRecord{
+		ID:              w.ID(),
+		Labels:          w.Labels(),
+		Platforms:       pb.PlatformsFromSpec(w.Platforms(true)),
+		GCPolicy:        toPBGCPolicy(w.GCPolicy()),
+		BuildkitVersion: toPBBuildkitVersion(w.BuildkitVersion()),
+		CDIDevices:      toPBCDIDevices(w.CDIManager()),
+	}
+}
+
+func fromAPICapabilityProfile(in *apitypes.CapabilityProfile) client.CapabilityProfile {
+	return client.CapabilityProfile{
+		Platforms:         pb.ToSpecPlatforms(in.Platforms),
+		Labels:            in.Labels,
+		CDIDevices:        in.CDIDevices,
+		VersionConstraint: in.VersionConstraint,
+	}
+}
+
+func toPBWorkerCapability(in client.CapabilityMatch) *apitypes.WorkerCapability {
+	return &apitypes.WorkerCapability{
+		Compatible: in.Compatible,
+		Rank:       int64(in.Rank),
+		Missing:    in.Missing,
+		Conflicts:  in.Conflicts,
+	}
 }
 
 func (c *Controller) Info(ctx context.Context, r *controlapi.InfoRequest) (*controlapi.InfoResponse, error) {

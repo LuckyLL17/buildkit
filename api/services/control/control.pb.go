@@ -1268,8 +1268,11 @@ func (x *BytesMessage) GetData() []byte {
 }
 
 type ListWorkersRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Filter        []string               `protobuf:"bytes,1,rep,name=filter,proto3" json:"filter,omitempty"` // containerd style
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Filter []string               `protobuf:"bytes,1,rep,name=filter,proto3" json:"filter,omitempty"` // containerd style
+	// Profile enables capability selection. When set, records are returned as
+	// stably sorted candidates carrying their capability match result.
+	Profile       *types.CapabilityProfile `protobuf:"bytes,2,opt,name=profile,proto3" json:"profile,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1307,6 +1310,13 @@ func (*ListWorkersRequest) Descriptor() ([]byte, []int) {
 func (x *ListWorkersRequest) GetFilter() []string {
 	if x != nil {
 		return x.Filter
+	}
+	return nil
+}
+
+func (x *ListWorkersRequest) GetProfile() *types.CapabilityProfile {
+	if x != nil {
+		return x.Profile
 	}
 	return nil
 }
@@ -2165,9 +2175,10 @@ const file_github_com_moby_buildkit_api_services_control_control_proto_rawDesc =
 	"\x04info\x18\x06 \x01(\v2\x0e.pb.SourceInfoR\x04info\x12!\n" +
 	"\x06ranges\x18\a \x03(\v2\t.pb.RangeR\x06ranges\"\"\n" +
 	"\fBytesMessage\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\",\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\"q\n" +
 	"\x12ListWorkersRequest\x12\x16\n" +
-	"\x06filter\x18\x01 \x03(\tR\x06filter\"S\n" +
+	"\x06filter\x18\x01 \x03(\tR\x06filter\x12C\n" +
+	"\aprofile\x18\x02 \x01(\v2).moby.buildkit.v1.types.CapabilityProfileR\aprofile\"S\n" +
 	"\x13ListWorkersResponse\x12<\n" +
 	"\x06record\x18\x01 \x03(\v2$.moby.buildkit.v1.types.WorkerRecordR\x06record\"\r\n" +
 	"\vInfoRequest\"a\n" +
@@ -2322,9 +2333,10 @@ var file_github_com_moby_buildkit_api_services_control_control_proto_goTypes = [
 	(*pb.ProgressGroup)(nil),           // 43: pb.ProgressGroup
 	(*pb.SourceInfo)(nil),              // 44: pb.SourceInfo
 	(*pb.Range)(nil),                   // 45: pb.Range
-	(*types.WorkerRecord)(nil),         // 46: moby.buildkit.v1.types.WorkerRecord
-	(*types.BuildkitVersion)(nil),      // 47: moby.buildkit.v1.types.BuildkitVersion
-	(*status.Status)(nil),              // 48: google.rpc.Status
+	(*types.CapabilityProfile)(nil),    // 46: moby.buildkit.v1.types.CapabilityProfile
+	(*types.WorkerRecord)(nil),         // 47: moby.buildkit.v1.types.WorkerRecord
+	(*types.BuildkitVersion)(nil),      // 48: moby.buildkit.v1.types.BuildkitVersion
+	(*status.Status)(nil),              // 49: google.rpc.Status
 }
 var file_github_com_moby_buildkit_api_services_control_control_proto_depIdxs = []int32{
 	4,  // 0: moby.buildkit.v1.DiskUsageResponse.record:type_name -> moby.buildkit.v1.UsageRecord
@@ -2355,52 +2367,53 @@ var file_github_com_moby_buildkit_api_services_control_control_proto_depIdxs = [
 	40, // 25: moby.buildkit.v1.VertexLog.timestamp:type_name -> google.protobuf.Timestamp
 	44, // 26: moby.buildkit.v1.VertexWarning.info:type_name -> pb.SourceInfo
 	45, // 27: moby.buildkit.v1.VertexWarning.ranges:type_name -> pb.Range
-	46, // 28: moby.buildkit.v1.ListWorkersResponse.record:type_name -> moby.buildkit.v1.types.WorkerRecord
-	47, // 29: moby.buildkit.v1.InfoResponse.buildkitVersion:type_name -> moby.buildkit.v1.types.BuildkitVersion
-	0,  // 30: moby.buildkit.v1.BuildHistoryEvent.type:type_name -> moby.buildkit.v1.BuildHistoryEventType
-	22, // 31: moby.buildkit.v1.BuildHistoryEvent.record:type_name -> moby.buildkit.v1.BuildHistoryRecord
-	34, // 32: moby.buildkit.v1.BuildHistoryRecord.FrontendAttrs:type_name -> moby.buildkit.v1.BuildHistoryRecord.FrontendAttrsEntry
-	27, // 33: moby.buildkit.v1.BuildHistoryRecord.Exporters:type_name -> moby.buildkit.v1.Exporter
-	48, // 34: moby.buildkit.v1.BuildHistoryRecord.error:type_name -> google.rpc.Status
-	40, // 35: moby.buildkit.v1.BuildHistoryRecord.CreatedAt:type_name -> google.protobuf.Timestamp
-	40, // 36: moby.buildkit.v1.BuildHistoryRecord.CompletedAt:type_name -> google.protobuf.Timestamp
-	25, // 37: moby.buildkit.v1.BuildHistoryRecord.logs:type_name -> moby.buildkit.v1.Descriptor
-	35, // 38: moby.buildkit.v1.BuildHistoryRecord.ExporterResponse:type_name -> moby.buildkit.v1.BuildHistoryRecord.ExporterResponseEntry
-	26, // 39: moby.buildkit.v1.BuildHistoryRecord.Result:type_name -> moby.buildkit.v1.BuildResultInfo
-	36, // 40: moby.buildkit.v1.BuildHistoryRecord.Results:type_name -> moby.buildkit.v1.BuildHistoryRecord.ResultsEntry
-	25, // 41: moby.buildkit.v1.BuildHistoryRecord.trace:type_name -> moby.buildkit.v1.Descriptor
-	25, // 42: moby.buildkit.v1.BuildHistoryRecord.externalError:type_name -> moby.buildkit.v1.Descriptor
-	37, // 43: moby.buildkit.v1.Descriptor.annotations:type_name -> moby.buildkit.v1.Descriptor.AnnotationsEntry
-	25, // 44: moby.buildkit.v1.BuildResultInfo.ResultDeprecated:type_name -> moby.buildkit.v1.Descriptor
-	25, // 45: moby.buildkit.v1.BuildResultInfo.Attestations:type_name -> moby.buildkit.v1.Descriptor
-	38, // 46: moby.buildkit.v1.BuildResultInfo.Results:type_name -> moby.buildkit.v1.BuildResultInfo.ResultsEntry
-	39, // 47: moby.buildkit.v1.Exporter.Attrs:type_name -> moby.buildkit.v1.Exporter.AttrsEntry
-	41, // 48: moby.buildkit.v1.SolveRequest.FrontendInputsEntry.value:type_name -> pb.Definition
-	26, // 49: moby.buildkit.v1.BuildHistoryRecord.ResultsEntry.value:type_name -> moby.buildkit.v1.BuildResultInfo
-	25, // 50: moby.buildkit.v1.BuildResultInfo.ResultsEntry.value:type_name -> moby.buildkit.v1.Descriptor
-	2,  // 51: moby.buildkit.v1.Control.DiskUsage:input_type -> moby.buildkit.v1.DiskUsageRequest
-	1,  // 52: moby.buildkit.v1.Control.Prune:input_type -> moby.buildkit.v1.PruneRequest
-	5,  // 53: moby.buildkit.v1.Control.Solve:input_type -> moby.buildkit.v1.SolveRequest
-	9,  // 54: moby.buildkit.v1.Control.Status:input_type -> moby.buildkit.v1.StatusRequest
-	15, // 55: moby.buildkit.v1.Control.Session:input_type -> moby.buildkit.v1.BytesMessage
-	16, // 56: moby.buildkit.v1.Control.ListWorkers:input_type -> moby.buildkit.v1.ListWorkersRequest
-	18, // 57: moby.buildkit.v1.Control.Info:input_type -> moby.buildkit.v1.InfoRequest
-	20, // 58: moby.buildkit.v1.Control.ListenBuildHistory:input_type -> moby.buildkit.v1.BuildHistoryRequest
-	23, // 59: moby.buildkit.v1.Control.UpdateBuildHistory:input_type -> moby.buildkit.v1.UpdateBuildHistoryRequest
-	3,  // 60: moby.buildkit.v1.Control.DiskUsage:output_type -> moby.buildkit.v1.DiskUsageResponse
-	4,  // 61: moby.buildkit.v1.Control.Prune:output_type -> moby.buildkit.v1.UsageRecord
-	8,  // 62: moby.buildkit.v1.Control.Solve:output_type -> moby.buildkit.v1.SolveResponse
-	10, // 63: moby.buildkit.v1.Control.Status:output_type -> moby.buildkit.v1.StatusResponse
-	15, // 64: moby.buildkit.v1.Control.Session:output_type -> moby.buildkit.v1.BytesMessage
-	17, // 65: moby.buildkit.v1.Control.ListWorkers:output_type -> moby.buildkit.v1.ListWorkersResponse
-	19, // 66: moby.buildkit.v1.Control.Info:output_type -> moby.buildkit.v1.InfoResponse
-	21, // 67: moby.buildkit.v1.Control.ListenBuildHistory:output_type -> moby.buildkit.v1.BuildHistoryEvent
-	24, // 68: moby.buildkit.v1.Control.UpdateBuildHistory:output_type -> moby.buildkit.v1.UpdateBuildHistoryResponse
-	60, // [60:69] is the sub-list for method output_type
-	51, // [51:60] is the sub-list for method input_type
-	51, // [51:51] is the sub-list for extension type_name
-	51, // [51:51] is the sub-list for extension extendee
-	0,  // [0:51] is the sub-list for field type_name
+	46, // 28: moby.buildkit.v1.ListWorkersRequest.profile:type_name -> moby.buildkit.v1.types.CapabilityProfile
+	47, // 29: moby.buildkit.v1.ListWorkersResponse.record:type_name -> moby.buildkit.v1.types.WorkerRecord
+	48, // 30: moby.buildkit.v1.InfoResponse.buildkitVersion:type_name -> moby.buildkit.v1.types.BuildkitVersion
+	0,  // 31: moby.buildkit.v1.BuildHistoryEvent.type:type_name -> moby.buildkit.v1.BuildHistoryEventType
+	22, // 32: moby.buildkit.v1.BuildHistoryEvent.record:type_name -> moby.buildkit.v1.BuildHistoryRecord
+	34, // 33: moby.buildkit.v1.BuildHistoryRecord.FrontendAttrs:type_name -> moby.buildkit.v1.BuildHistoryRecord.FrontendAttrsEntry
+	27, // 34: moby.buildkit.v1.BuildHistoryRecord.Exporters:type_name -> moby.buildkit.v1.Exporter
+	49, // 35: moby.buildkit.v1.BuildHistoryRecord.error:type_name -> google.rpc.Status
+	40, // 36: moby.buildkit.v1.BuildHistoryRecord.CreatedAt:type_name -> google.protobuf.Timestamp
+	40, // 37: moby.buildkit.v1.BuildHistoryRecord.CompletedAt:type_name -> google.protobuf.Timestamp
+	25, // 38: moby.buildkit.v1.BuildHistoryRecord.logs:type_name -> moby.buildkit.v1.Descriptor
+	35, // 39: moby.buildkit.v1.BuildHistoryRecord.ExporterResponse:type_name -> moby.buildkit.v1.BuildHistoryRecord.ExporterResponseEntry
+	26, // 40: moby.buildkit.v1.BuildHistoryRecord.Result:type_name -> moby.buildkit.v1.BuildResultInfo
+	36, // 41: moby.buildkit.v1.BuildHistoryRecord.Results:type_name -> moby.buildkit.v1.BuildHistoryRecord.ResultsEntry
+	25, // 42: moby.buildkit.v1.BuildHistoryRecord.trace:type_name -> moby.buildkit.v1.Descriptor
+	25, // 43: moby.buildkit.v1.BuildHistoryRecord.externalError:type_name -> moby.buildkit.v1.Descriptor
+	37, // 44: moby.buildkit.v1.Descriptor.annotations:type_name -> moby.buildkit.v1.Descriptor.AnnotationsEntry
+	25, // 45: moby.buildkit.v1.BuildResultInfo.ResultDeprecated:type_name -> moby.buildkit.v1.Descriptor
+	25, // 46: moby.buildkit.v1.BuildResultInfo.Attestations:type_name -> moby.buildkit.v1.Descriptor
+	38, // 47: moby.buildkit.v1.BuildResultInfo.Results:type_name -> moby.buildkit.v1.BuildResultInfo.ResultsEntry
+	39, // 48: moby.buildkit.v1.Exporter.Attrs:type_name -> moby.buildkit.v1.Exporter.AttrsEntry
+	41, // 49: moby.buildkit.v1.SolveRequest.FrontendInputsEntry.value:type_name -> pb.Definition
+	26, // 50: moby.buildkit.v1.BuildHistoryRecord.ResultsEntry.value:type_name -> moby.buildkit.v1.BuildResultInfo
+	25, // 51: moby.buildkit.v1.BuildResultInfo.ResultsEntry.value:type_name -> moby.buildkit.v1.Descriptor
+	2,  // 52: moby.buildkit.v1.Control.DiskUsage:input_type -> moby.buildkit.v1.DiskUsageRequest
+	1,  // 53: moby.buildkit.v1.Control.Prune:input_type -> moby.buildkit.v1.PruneRequest
+	5,  // 54: moby.buildkit.v1.Control.Solve:input_type -> moby.buildkit.v1.SolveRequest
+	9,  // 55: moby.buildkit.v1.Control.Status:input_type -> moby.buildkit.v1.StatusRequest
+	15, // 56: moby.buildkit.v1.Control.Session:input_type -> moby.buildkit.v1.BytesMessage
+	16, // 57: moby.buildkit.v1.Control.ListWorkers:input_type -> moby.buildkit.v1.ListWorkersRequest
+	18, // 58: moby.buildkit.v1.Control.Info:input_type -> moby.buildkit.v1.InfoRequest
+	20, // 59: moby.buildkit.v1.Control.ListenBuildHistory:input_type -> moby.buildkit.v1.BuildHistoryRequest
+	23, // 60: moby.buildkit.v1.Control.UpdateBuildHistory:input_type -> moby.buildkit.v1.UpdateBuildHistoryRequest
+	3,  // 61: moby.buildkit.v1.Control.DiskUsage:output_type -> moby.buildkit.v1.DiskUsageResponse
+	4,  // 62: moby.buildkit.v1.Control.Prune:output_type -> moby.buildkit.v1.UsageRecord
+	8,  // 63: moby.buildkit.v1.Control.Solve:output_type -> moby.buildkit.v1.SolveResponse
+	10, // 64: moby.buildkit.v1.Control.Status:output_type -> moby.buildkit.v1.StatusResponse
+	15, // 65: moby.buildkit.v1.Control.Session:output_type -> moby.buildkit.v1.BytesMessage
+	17, // 66: moby.buildkit.v1.Control.ListWorkers:output_type -> moby.buildkit.v1.ListWorkersResponse
+	19, // 67: moby.buildkit.v1.Control.Info:output_type -> moby.buildkit.v1.InfoResponse
+	21, // 68: moby.buildkit.v1.Control.ListenBuildHistory:output_type -> moby.buildkit.v1.BuildHistoryEvent
+	24, // 69: moby.buildkit.v1.Control.UpdateBuildHistory:output_type -> moby.buildkit.v1.UpdateBuildHistoryResponse
+	61, // [61:70] is the sub-list for method output_type
+	52, // [52:61] is the sub-list for method input_type
+	52, // [52:52] is the sub-list for extension type_name
+	52, // [52:52] is the sub-list for extension extendee
+	0,  // [0:52] is the sub-list for field type_name
 }
 
 func init() { file_github_com_moby_buildkit_api_services_control_control_proto_init() }

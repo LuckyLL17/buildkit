@@ -30,8 +30,10 @@ type WorkerRecord struct {
 	GCPolicy        []*GCPolicy            `protobuf:"bytes,4,rep,name=GCPolicy,proto3" json:"GCPolicy,omitempty"`
 	BuildkitVersion *BuildkitVersion       `protobuf:"bytes,5,opt,name=BuildkitVersion,proto3" json:"BuildkitVersion,omitempty"`
 	CDIDevices      []*CDIDevice           `protobuf:"bytes,6,rep,name=CDIDevices,proto3" json:"CDIDevices,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Capability is set when the list request carried a CapabilityProfile.
+	Capability    *WorkerCapability `protobuf:"bytes,7,opt,name=capability,proto3" json:"capability,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WorkerRecord) Reset() {
@@ -106,6 +108,162 @@ func (x *WorkerRecord) GetCDIDevices() []*CDIDevice {
 	return nil
 }
 
+func (x *WorkerRecord) GetCapability() *WorkerCapability {
+	if x != nil {
+		return x.Capability
+	}
+	return nil
+}
+
+// CapabilityProfile selects workers capable of running a build.
+type CapabilityProfile struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Platforms a candidate worker must support, all of them.
+	Platforms []*pb.Platform `protobuf:"bytes,1,rep,name=platforms,proto3" json:"platforms,omitempty"`
+	// Labels a candidate worker must carry. An empty value only requires the
+	// key to be present, a non-empty value requires an exact match.
+	Labels map[string]string `protobuf:"bytes,2,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// CDIDevices a candidate worker must provide, all of them. A name
+	// without an "=" matches every device of the same CDI kind.
+	CDIDevices []string `protobuf:"bytes,3,rep,name=CDIDevices,proto3" json:"CDIDevices,omitempty"`
+	// VersionConstraint is a comma-separated list of constraints against
+	// the worker BuildKit version, e.g. ">=0.13.0,<1.0.0".
+	VersionConstraint string `protobuf:"bytes,4,opt,name=versionConstraint,proto3" json:"versionConstraint,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *CapabilityProfile) Reset() {
+	*x = CapabilityProfile{}
+	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CapabilityProfile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CapabilityProfile) ProtoMessage() {}
+
+func (x *CapabilityProfile) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CapabilityProfile.ProtoReflect.Descriptor instead.
+func (*CapabilityProfile) Descriptor() ([]byte, []int) {
+	return file_github_com_moby_buildkit_api_types_worker_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *CapabilityProfile) GetPlatforms() []*pb.Platform {
+	if x != nil {
+		return x.Platforms
+	}
+	return nil
+}
+
+func (x *CapabilityProfile) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+func (x *CapabilityProfile) GetCDIDevices() []string {
+	if x != nil {
+		return x.CDIDevices
+	}
+	return nil
+}
+
+func (x *CapabilityProfile) GetVersionConstraint() string {
+	if x != nil {
+		return x.VersionConstraint
+	}
+	return ""
+}
+
+// WorkerCapability explains how a worker fits the requested profile.
+type WorkerCapability struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Compatible reports whether the worker satisfies every constraint.
+	Compatible bool `protobuf:"varint,1,opt,name=compatible,proto3" json:"compatible,omitempty"`
+	// Rank orders compatible workers, higher ranks sort first.
+	Rank int64 `protobuf:"varint,2,opt,name=rank,proto3" json:"rank,omitempty"`
+	// Missing lists capabilities required by the profile but not provided.
+	Missing []string `protobuf:"bytes,3,rep,name=missing,proto3" json:"missing,omitempty"`
+	// Conflicts lists worker capabilities that contradict the profile.
+	Conflicts     []string `protobuf:"bytes,4,rep,name=conflicts,proto3" json:"conflicts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerCapability) Reset() {
+	*x = WorkerCapability{}
+	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerCapability) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerCapability) ProtoMessage() {}
+
+func (x *WorkerCapability) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerCapability.ProtoReflect.Descriptor instead.
+func (*WorkerCapability) Descriptor() ([]byte, []int) {
+	return file_github_com_moby_buildkit_api_types_worker_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *WorkerCapability) GetCompatible() bool {
+	if x != nil {
+		return x.Compatible
+	}
+	return false
+}
+
+func (x *WorkerCapability) GetRank() int64 {
+	if x != nil {
+		return x.Rank
+	}
+	return 0
+}
+
+func (x *WorkerCapability) GetMissing() []string {
+	if x != nil {
+		return x.Missing
+	}
+	return nil
+}
+
+func (x *WorkerCapability) GetConflicts() []string {
+	if x != nil {
+		return x.Conflicts
+	}
+	return nil
+}
+
 type GCPolicy struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	All          bool                   `protobuf:"varint,1,opt,name=all,proto3" json:"all,omitempty"`
@@ -121,7 +279,7 @@ type GCPolicy struct {
 
 func (x *GCPolicy) Reset() {
 	*x = GCPolicy{}
-	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[1]
+	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -133,7 +291,7 @@ func (x *GCPolicy) String() string {
 func (*GCPolicy) ProtoMessage() {}
 
 func (x *GCPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[1]
+	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -146,7 +304,7 @@ func (x *GCPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GCPolicy.ProtoReflect.Descriptor instead.
 func (*GCPolicy) Descriptor() ([]byte, []int) {
-	return file_github_com_moby_buildkit_api_types_worker_proto_rawDescGZIP(), []int{1}
+	return file_github_com_moby_buildkit_api_types_worker_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GCPolicy) GetAll() bool {
@@ -203,7 +361,7 @@ type BuildkitVersion struct {
 
 func (x *BuildkitVersion) Reset() {
 	*x = BuildkitVersion{}
-	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[2]
+	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -215,7 +373,7 @@ func (x *BuildkitVersion) String() string {
 func (*BuildkitVersion) ProtoMessage() {}
 
 func (x *BuildkitVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[2]
+	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -228,7 +386,7 @@ func (x *BuildkitVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildkitVersion.ProtoReflect.Descriptor instead.
 func (*BuildkitVersion) Descriptor() ([]byte, []int) {
-	return file_github_com_moby_buildkit_api_types_worker_proto_rawDescGZIP(), []int{2}
+	return file_github_com_moby_buildkit_api_types_worker_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *BuildkitVersion) GetPackage() string {
@@ -271,7 +429,7 @@ type CDIDevice struct {
 
 func (x *CDIDevice) Reset() {
 	*x = CDIDevice{}
-	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[3]
+	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -283,7 +441,7 @@ func (x *CDIDevice) String() string {
 func (*CDIDevice) ProtoMessage() {}
 
 func (x *CDIDevice) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[3]
+	mi := &file_github_com_moby_buildkit_api_types_worker_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -296,7 +454,7 @@ func (x *CDIDevice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CDIDevice.ProtoReflect.Descriptor instead.
 func (*CDIDevice) Descriptor() ([]byte, []int) {
-	return file_github_com_moby_buildkit_api_types_worker_proto_rawDescGZIP(), []int{3}
+	return file_github_com_moby_buildkit_api_types_worker_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CDIDevice) GetName() string {
@@ -331,7 +489,7 @@ var File_github_com_moby_buildkit_api_types_worker_proto protoreflect.FileDescri
 
 const file_github_com_moby_buildkit_api_types_worker_proto_rawDesc = "" +
 	"\n" +
-	"/github.com/moby/buildkit/api/types/worker.proto\x12\x16moby.buildkit.v1.types\x1a,github.com/moby/buildkit/solver/pb/ops.proto\"\xa3\x03\n" +
+	"/github.com/moby/buildkit/api/types/worker.proto\x12\x16moby.buildkit.v1.types\x1a,github.com/moby/buildkit/solver/pb/ops.proto\"\xed\x03\n" +
 	"\fWorkerRecord\x12\x0e\n" +
 	"\x02ID\x18\x01 \x01(\tR\x02ID\x12H\n" +
 	"\x06Labels\x18\x02 \x03(\v20.moby.buildkit.v1.types.WorkerRecord.LabelsEntryR\x06Labels\x12*\n" +
@@ -340,10 +498,30 @@ const file_github_com_moby_buildkit_api_types_worker_proto_rawDesc = "" +
 	"\x0fBuildkitVersion\x18\x05 \x01(\v2'.moby.buildkit.v1.types.BuildkitVersionR\x0fBuildkitVersion\x12A\n" +
 	"\n" +
 	"CDIDevices\x18\x06 \x03(\v2!.moby.buildkit.v1.types.CDIDeviceR\n" +
-	"CDIDevices\x1a9\n" +
+	"CDIDevices\x12H\n" +
+	"\n" +
+	"capability\x18\a \x01(\v2(.moby.buildkit.v1.types.WorkerCapabilityR\n" +
+	"capability\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc8\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x97\x02\n" +
+	"\x11CapabilityProfile\x12*\n" +
+	"\tplatforms\x18\x01 \x03(\v2\f.pb.PlatformR\tplatforms\x12M\n" +
+	"\x06labels\x18\x02 \x03(\v25.moby.buildkit.v1.types.CapabilityProfile.LabelsEntryR\x06labels\x12\x1e\n" +
+	"\n" +
+	"CDIDevices\x18\x03 \x03(\tR\n" +
+	"CDIDevices\x12,\n" +
+	"\x11versionConstraint\x18\x04 \x01(\tR\x11versionConstraint\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"~\n" +
+	"\x10WorkerCapability\x12\x1e\n" +
+	"\n" +
+	"compatible\x18\x01 \x01(\bR\n" +
+	"compatible\x12\x12\n" +
+	"\x04rank\x18\x02 \x01(\x03R\x04rank\x12\x18\n" +
+	"\amissing\x18\x03 \x03(\tR\amissing\x12\x1c\n" +
+	"\tconflicts\x18\x04 \x03(\tR\tconflicts\"\xc8\x01\n" +
 	"\bGCPolicy\x12\x10\n" +
 	"\x03all\x18\x01 \x01(\bR\x03all\x12\"\n" +
 	"\fkeepDuration\x18\x02 \x01(\x03R\fkeepDuration\x12\x18\n" +
@@ -377,28 +555,34 @@ func file_github_com_moby_buildkit_api_types_worker_proto_rawDescGZIP() []byte {
 	return file_github_com_moby_buildkit_api_types_worker_proto_rawDescData
 }
 
-var file_github_com_moby_buildkit_api_types_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_github_com_moby_buildkit_api_types_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_github_com_moby_buildkit_api_types_worker_proto_goTypes = []any{
-	(*WorkerRecord)(nil),    // 0: moby.buildkit.v1.types.WorkerRecord
-	(*GCPolicy)(nil),        // 1: moby.buildkit.v1.types.GCPolicy
-	(*BuildkitVersion)(nil), // 2: moby.buildkit.v1.types.BuildkitVersion
-	(*CDIDevice)(nil),       // 3: moby.buildkit.v1.types.CDIDevice
-	nil,                     // 4: moby.buildkit.v1.types.WorkerRecord.LabelsEntry
-	nil,                     // 5: moby.buildkit.v1.types.CDIDevice.AnnotationsEntry
-	(*pb.Platform)(nil),     // 6: pb.Platform
+	(*WorkerRecord)(nil),      // 0: moby.buildkit.v1.types.WorkerRecord
+	(*CapabilityProfile)(nil), // 1: moby.buildkit.v1.types.CapabilityProfile
+	(*WorkerCapability)(nil),  // 2: moby.buildkit.v1.types.WorkerCapability
+	(*GCPolicy)(nil),          // 3: moby.buildkit.v1.types.GCPolicy
+	(*BuildkitVersion)(nil),   // 4: moby.buildkit.v1.types.BuildkitVersion
+	(*CDIDevice)(nil),         // 5: moby.buildkit.v1.types.CDIDevice
+	nil,                       // 6: moby.buildkit.v1.types.WorkerRecord.LabelsEntry
+	nil,                       // 7: moby.buildkit.v1.types.CapabilityProfile.LabelsEntry
+	nil,                       // 8: moby.buildkit.v1.types.CDIDevice.AnnotationsEntry
+	(*pb.Platform)(nil),       // 9: pb.Platform
 }
 var file_github_com_moby_buildkit_api_types_worker_proto_depIdxs = []int32{
-	4, // 0: moby.buildkit.v1.types.WorkerRecord.Labels:type_name -> moby.buildkit.v1.types.WorkerRecord.LabelsEntry
-	6, // 1: moby.buildkit.v1.types.WorkerRecord.platforms:type_name -> pb.Platform
-	1, // 2: moby.buildkit.v1.types.WorkerRecord.GCPolicy:type_name -> moby.buildkit.v1.types.GCPolicy
-	2, // 3: moby.buildkit.v1.types.WorkerRecord.BuildkitVersion:type_name -> moby.buildkit.v1.types.BuildkitVersion
-	3, // 4: moby.buildkit.v1.types.WorkerRecord.CDIDevices:type_name -> moby.buildkit.v1.types.CDIDevice
-	5, // 5: moby.buildkit.v1.types.CDIDevice.Annotations:type_name -> moby.buildkit.v1.types.CDIDevice.AnnotationsEntry
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	6, // 0: moby.buildkit.v1.types.WorkerRecord.Labels:type_name -> moby.buildkit.v1.types.WorkerRecord.LabelsEntry
+	9, // 1: moby.buildkit.v1.types.WorkerRecord.platforms:type_name -> pb.Platform
+	3, // 2: moby.buildkit.v1.types.WorkerRecord.GCPolicy:type_name -> moby.buildkit.v1.types.GCPolicy
+	4, // 3: moby.buildkit.v1.types.WorkerRecord.BuildkitVersion:type_name -> moby.buildkit.v1.types.BuildkitVersion
+	5, // 4: moby.buildkit.v1.types.WorkerRecord.CDIDevices:type_name -> moby.buildkit.v1.types.CDIDevice
+	2, // 5: moby.buildkit.v1.types.WorkerRecord.capability:type_name -> moby.buildkit.v1.types.WorkerCapability
+	9, // 6: moby.buildkit.v1.types.CapabilityProfile.platforms:type_name -> pb.Platform
+	7, // 7: moby.buildkit.v1.types.CapabilityProfile.labels:type_name -> moby.buildkit.v1.types.CapabilityProfile.LabelsEntry
+	8, // 8: moby.buildkit.v1.types.CDIDevice.Annotations:type_name -> moby.buildkit.v1.types.CDIDevice.AnnotationsEntry
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_github_com_moby_buildkit_api_types_worker_proto_init() }
@@ -412,7 +596,7 @@ func file_github_com_moby_buildkit_api_types_worker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_github_com_moby_buildkit_api_types_worker_proto_rawDesc), len(file_github_com_moby_buildkit_api_types_worker_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

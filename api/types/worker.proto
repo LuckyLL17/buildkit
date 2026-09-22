@@ -13,6 +13,35 @@ message WorkerRecord {
 	repeated GCPolicy GCPolicy = 4;
 	BuildkitVersion BuildkitVersion = 5;
 	repeated CDIDevice CDIDevices = 6;
+	// Capability is set when the list request carried a CapabilityProfile.
+	WorkerCapability capability = 7;
+}
+
+// CapabilityProfile selects workers capable of running a build.
+message CapabilityProfile {
+	// Platforms a candidate worker must support, all of them.
+	repeated pb.Platform platforms = 1;
+	// Labels a candidate worker must carry. An empty value only requires the
+	// key to be present, a non-empty value requires an exact match.
+	map<string, string> labels = 2;
+	// CDIDevices a candidate worker must provide, all of them. A name
+	// without an "=" matches every device of the same CDI kind.
+	repeated string CDIDevices = 3;
+	// VersionConstraint is a comma-separated list of constraints against
+	// the worker BuildKit version, e.g. ">=0.13.0,<1.0.0".
+	string versionConstraint = 4;
+}
+
+// WorkerCapability explains how a worker fits the requested profile.
+message WorkerCapability {
+	// Compatible reports whether the worker satisfies every constraint.
+	bool compatible = 1;
+	// Rank orders compatible workers, higher ranks sort first.
+	int64 rank = 2;
+	// Missing lists capabilities required by the profile but not provided.
+	repeated string missing = 3;
+	// Conflicts lists worker capabilities that contradict the profile.
+	repeated string conflicts = 4;
 }
 
 message GCPolicy {
