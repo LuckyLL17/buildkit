@@ -339,59 +339,81 @@ func (cr *cacheRecord) viewSnapshotID() string {
 func (cr *cacheRecord) size(ctx context.Context) (int64, error) {
 	// this expects that usage() is implemented lazily
 	return cr.sizeG.Do(ctx, cr.ID(), func(ctx context.Context) (int64, error) {
-		cr.mu.Lock()
-		s := cr.getSize()
-		if s != sizeUnknown {
-			cr.mu.Unlock()
-			return s, nil
-		}
-		driverID := cr.getSnapshotID()
-		if cr.equalMutable != nil {
-			driverID = cr.equalMutable.getSnapshotID()
-		}
-		cr.mu.Unlock()
-		var usage snapshots.Usage
-		if !cr.getBlobOnly() {
-			var err error
-			usage, err = cr.cm.Snapshotter.Usage(ctx, driverID)
-			if err != nil {
-				cr.mu.Lock()
-				isDead := cr.isDead()
-				cr.mu.Unlock()
-				if isDead {
-					return 0, nil
-				}
-				if !errors.Is(err, cerrdefs.ErrNotFound) {
-					return s, errors.Wrapf(err, "failed to get usage for %s", cr.ID())
-				}
-			}
-		}
-		if dgst := cr.getBlob(); dgst != "" {
-			added := make(map[digest.Digest]struct{})
-			info, err := cr.cm.ContentStore.Info(ctx, dgst)
-			if err == nil {
-				usage.Size += info.Size
-				added[dgst] = struct{}{}
-			}
-			walkBlobVariantsOnly(ctx, cr.cm.ContentStore, dgst, func(desc ocispecs.Descriptor) bool {
-				if _, ok := added[desc.Digest]; !ok {
-					if info, err := cr.cm.ContentStore.Info(ctx, desc.Digest); err == nil {
-						usage.Size += info.Size
-						added[desc.Digest] = struct{}{}
-					}
-				}
-				return true
-			}, nil)
+		s, err := cr.calculateSize(ctx)
+		if err != nil {
+			return s, err
 		}
 		cr.mu.Lock()
-		cr.queueSize(usage.Size)
+		cr.queueSize(s)
 		if err := cr.commitMetadata(); err != nil {
 			cr.mu.Unlock()
 			return s, err
 		}
 		cr.mu.Unlock()
-		return usage.Size, nil
+		return s, nil
 	})
+}
+
+// sizeReadonly returns the record size without persisting it in metadata.
+func (cr *cacheRecord) sizeReadonly(ctx context.Context) (int64, error) {
+	if s := cr.cachedSize(); s != sizeUnknown {
+		return s, nil
+	}
+	return cr.calculateSize(ctx)
+}
+
+func (cr *cacheRecord) cachedSize() int64 {
+	cr.mu.Lock()
+	defer cr.mu.Unlock()
+	return cr.getSize()
+}
+
+func (cr *cacheRecord) calculateSize(ctx context.Context) (int64, error) {
+	cr.mu.Lock()
+	s := cr.getSize()
+	if s != sizeUnknown {
+		cr.mu.Unlock()
+		return s, nil
+	}
+	driverID := cr.getSnapshotID()
+	if cr.equalMutable != nil {
+		driverID = cr.equalMutable.getSnapshotID()
+	}
+	cr.mu.Unlock()
+	var usage snapshots.Usage
+	if !cr.getBlobOnly() {
+		var err error
+		usage, err = cr.cm.Snapshotter.Usage(ctx, driverID)
+		if err != nil {
+			cr.mu.Lock()
+			isDead := cr.isDead()
+			cr.mu.Unlock()
+			if isDead {
+				return 0, nil
+			}
+			if !errors.Is(err, cerrdefs.ErrNotFound) {
+				return s, errors.Wrapf(err, "failed to get usage for %s", cr.ID())
+			}
+		}
+	}
+	if dgst := cr.getBlob(); dgst != "" {
+		added := make(map[digest.Digest]struct{})
+		info, err := cr.cm.ContentStore.Info(ctx, dgst)
+		if err == nil {
+			usage.Size += info.Size
+			added[dgst] = struct{}{}
+		}
+		walkBlobVariantsOnly(ctx, cr.cm.ContentStore, dgst, func(desc ocispecs.Descriptor) bool {
+			if _, ok := added[desc.Digest]; !ok {
+				if info, err := cr.cm.ContentStore.Info(ctx, desc.Digest); err == nil {
+					usage.Size += info.Size
+					added[desc.Digest] = struct{}{}
+				}
+			}
+			return true
+		}, nil)
+	}
+	return usage.Size, nil
 }
 
 // caller must hold cr.mu

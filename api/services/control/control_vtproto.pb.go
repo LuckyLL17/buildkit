@@ -35,6 +35,7 @@ func (m *PruneRequest) CloneVT() *PruneRequest {
 	r.ReservedSpace = m.ReservedSpace
 	r.MaxUsedSpace = m.MaxUsedSpace
 	r.MinFreeSpace = m.MinFreeSpace
+	r.Plan = m.Plan
 	if rhs := m.Filter; rhs != nil {
 		tmpContainer := make([]string, len(rhs))
 		copy(tmpContainer, rhs)
@@ -112,6 +113,8 @@ func (m *UsageRecord) CloneVT() *UsageRecord {
 	r.Description = m.Description
 	r.RecordType = m.RecordType
 	r.Shared = m.Shared
+	r.Delete = m.Delete
+	r.Reason = m.Reason
 	if rhs := m.Parents; rhs != nil {
 		tmpContainer := make([]string, len(rhs))
 		copy(tmpContainer, rhs)
@@ -810,6 +813,9 @@ func (this *PruneRequest) EqualVT(that *PruneRequest) bool {
 	if this.MinFreeSpace != that.MinFreeSpace {
 		return false
 	}
+	if this.Plan != that.Plan {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -928,6 +934,12 @@ func (this *UsageRecord) EqualVT(that *UsageRecord) bool {
 		if vx != vy {
 			return false
 		}
+	}
+	if this.Delete != that.Delete {
+		return false
+	}
+	if this.Reason != that.Reason {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -1963,6 +1975,16 @@ func (m *PruneRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Plan {
+		i--
+		if m.Plan {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x38
+	}
 	if m.MinFreeSpace != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinFreeSpace))
 		i--
@@ -2126,6 +2148,23 @@ func (m *UsageRecord) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Reason) > 0 {
+		i -= len(m.Reason)
+		copy(dAtA[i:], m.Reason)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Reason)))
+		i--
+		dAtA[i] = 0x72
+	}
+	if m.Delete {
+		i--
+		if m.Delete {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x68
 	}
 	if len(m.Parents) > 0 {
 		for iNdEx := len(m.Parents) - 1; iNdEx >= 0; iNdEx-- {
@@ -4022,6 +4061,9 @@ func (m *PruneRequest) SizeVT() (n int) {
 	if m.MinFreeSpace != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinFreeSpace))
 	}
+	if m.Plan {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -4111,6 +4153,13 @@ func (m *UsageRecord) SizeVT() (n int) {
 			l = len(s)
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.Delete {
+		n += 2
+	}
+	l = len(m.Reason)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -4983,6 +5032,26 @@ func (m *PruneRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Plan", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Plan = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -5550,6 +5619,58 @@ func (m *UsageRecord) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Parents = append(m.Parents, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Delete", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Delete = bool(v != 0)
+		case 14:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reason", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Reason = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

@@ -25,6 +25,7 @@ func TestCLIIntegration(t *testing.T) {
 		testBuildMetadataFile,
 		testBuildPushProgress,
 		testPrune,
+		testPrunePlan,
 		testUsage,
 	),
 		integration.WithMirroredImages(integration.OfficialImages(integration.UnixOrWindows("busybox:latest", "nanoserver:latest"))),

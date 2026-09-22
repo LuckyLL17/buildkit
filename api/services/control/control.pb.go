@@ -83,6 +83,8 @@ type PruneRequest struct {
 	ReservedSpace int64                  `protobuf:"varint,4,opt,name=reservedSpace,proto3" json:"reservedSpace,omitempty"`
 	MaxUsedSpace  int64                  `protobuf:"varint,5,opt,name=maxUsedSpace,proto3" json:"maxUsedSpace,omitempty"`
 	MinFreeSpace  int64                  `protobuf:"varint,6,opt,name=minFreeSpace,proto3" json:"minFreeSpace,omitempty"`
+	// plan returns the records that would be deleted without deleting them
+	Plan          bool `protobuf:"varint,7,opt,name=plan,proto3" json:"plan,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -157,6 +159,13 @@ func (x *PruneRequest) GetMinFreeSpace() int64 {
 		return x.MinFreeSpace
 	}
 	return 0
+}
+
+func (x *PruneRequest) GetPlan() bool {
+	if x != nil {
+		return x.Plan
+	}
+	return false
 }
 
 type DiskUsageRequest struct {
@@ -270,6 +279,8 @@ type UsageRecord struct {
 	RecordType    string                 `protobuf:"bytes,10,opt,name=RecordType,proto3" json:"RecordType,omitempty"`
 	Shared        bool                   `protobuf:"varint,11,opt,name=Shared,proto3" json:"Shared,omitempty"`
 	Parents       []string               `protobuf:"bytes,12,rep,name=Parents,proto3" json:"Parents,omitempty"`
+	Delete        bool                   `protobuf:"varint,13,opt,name=Delete,proto3" json:"Delete,omitempty"` // set in plan mode when the record would be deleted
+	Reason        string                 `protobuf:"bytes,14,opt,name=Reason,proto3" json:"Reason,omitempty"`  // set in plan mode when the record is kept
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -387,6 +398,20 @@ func (x *UsageRecord) GetParents() []string {
 		return x.Parents
 	}
 	return nil
+}
+
+func (x *UsageRecord) GetDelete() bool {
+	if x != nil {
+		return x.Delete
+	}
+	return false
+}
+
+func (x *UsageRecord) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
 }
 
 type SolveRequest struct {
@@ -2042,19 +2067,20 @@ var File_github_com_moby_buildkit_api_services_control_control_proto protoreflec
 
 const file_github_com_moby_buildkit_api_services_control_control_proto_rawDesc = "" +
 	"\n" +
-	";github.com/moby/buildkit/api/services/control/control.proto\x12\x10moby.buildkit.v1\x1a/github.com/moby/buildkit/api/types/worker.proto\x1a,github.com/moby/buildkit/solver/pb/ops.proto\x1a5github.com/moby/buildkit/sourcepolicy/pb/policy.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"\xca\x01\n" +
+	";github.com/moby/buildkit/api/services/control/control.proto\x12\x10moby.buildkit.v1\x1a/github.com/moby/buildkit/api/types/worker.proto\x1a,github.com/moby/buildkit/solver/pb/ops.proto\x1a5github.com/moby/buildkit/sourcepolicy/pb/policy.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"\xde\x01\n" +
 	"\fPruneRequest\x12\x16\n" +
 	"\x06filter\x18\x01 \x03(\tR\x06filter\x12\x10\n" +
 	"\x03all\x18\x02 \x01(\bR\x03all\x12\"\n" +
 	"\fkeepDuration\x18\x03 \x01(\x03R\fkeepDuration\x12$\n" +
 	"\rreservedSpace\x18\x04 \x01(\x03R\rreservedSpace\x12\"\n" +
 	"\fmaxUsedSpace\x18\x05 \x01(\x03R\fmaxUsedSpace\x12\"\n" +
-	"\fminFreeSpace\x18\x06 \x01(\x03R\fminFreeSpace\"F\n" +
+	"\fminFreeSpace\x18\x06 \x01(\x03R\fminFreeSpace\x12\x12\n" +
+	"\x04plan\x18\a \x01(\bR\x04plan\"F\n" +
 	"\x10DiskUsageRequest\x12\x16\n" +
 	"\x06filter\x18\x01 \x03(\tR\x06filter\x12\x1a\n" +
 	"\bageLimit\x18\x02 \x01(\x03R\bageLimit\"J\n" +
 	"\x11DiskUsageResponse\x125\n" +
-	"\x06record\x18\x01 \x03(\v2\x1d.moby.buildkit.v1.UsageRecordR\x06record\"\x87\x03\n" +
+	"\x06record\x18\x01 \x03(\v2\x1d.moby.buildkit.v1.UsageRecordR\x06record\"\xb7\x03\n" +
 	"\vUsageRecord\x12\x0e\n" +
 	"\x02ID\x18\x01 \x01(\tR\x02ID\x12\x18\n" +
 	"\aMutable\x18\x02 \x01(\bR\aMutable\x12\x14\n" +
@@ -2074,7 +2100,9 @@ const file_github_com_moby_buildkit_api_services_control_control_proto_rawDesc =
 	" \x01(\tR\n" +
 	"RecordType\x12\x16\n" +
 	"\x06Shared\x18\v \x01(\bR\x06Shared\x12\x18\n" +
-	"\aParents\x18\f \x03(\tR\aParents\"\xfe\b\n" +
+	"\aParents\x18\f \x03(\tR\aParents\x12\x16\n" +
+	"\x06Delete\x18\r \x01(\bR\x06Delete\x12\x16\n" +
+	"\x06Reason\x18\x0e \x01(\tR\x06Reason\"\xfe\b\n" +
 	"\fSolveRequest\x12\x10\n" +
 	"\x03Ref\x18\x01 \x01(\tR\x03Ref\x12.\n" +
 	"\n" +

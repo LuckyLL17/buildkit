@@ -21,6 +21,7 @@ func (c *Client) Prune(ctx context.Context, ch chan UsageInfo, opts ...PruneOpti
 		ReservedSpace: info.ReservedSpace,
 		MaxUsedSpace:  info.MaxUsedSpace,
 		MinFreeSpace:  info.MinFreeSpace,
+		Plan:          info.Plan,
 	}
 	if info.All {
 		req.All = true
@@ -57,6 +58,8 @@ func (c *Client) Prune(ctx context.Context, ch chan UsageInfo, opts ...PruneOpti
 				}(),
 				RecordType: UsageRecordType(d.RecordType),
 				Shared:     d.Shared,
+				Delete:     d.Delete,
+				Reason:     d.Reason,
 			}
 		}
 	}
@@ -74,7 +77,19 @@ type PruneInfo struct {
 	ReservedSpace int64 `json:"reservedSpace"`
 	MaxUsedSpace  int64 `json:"maxUsedSpace"`
 	MinFreeSpace  int64 `json:"minFreeSpace"`
+
+	Plan bool `json:"plan"`
 }
+
+// Prune skip reasons returned in UsageInfo.Reason during plan mode.
+const (
+	PruneSkipInUse        = "in-use"
+	PruneSkipType         = "type-excluded"
+	PruneSkipShared       = "shared-excluded"
+	PruneSkipKeepDuration = "keep-duration"
+	PruneSkipFilter       = "filter-no-match"
+	PruneSkipCapacity     = "capacity-reached"
+)
 
 type pruneOptionFunc func(*PruneInfo)
 
@@ -84,6 +99,10 @@ func (f pruneOptionFunc) SetPruneOption(pi *PruneInfo) {
 
 var PruneAll = pruneOptionFunc(func(pi *PruneInfo) {
 	pi.All = true
+})
+
+var PrunePlan = pruneOptionFunc(func(pi *PruneInfo) {
+	pi.Plan = true
 })
 
 func WithKeepOpt(duration time.Duration, reserved int64, max int64, free int64) PruneOption {

@@ -32,6 +32,9 @@ message PruneRequest {
 	int64 reservedSpace = 4;
 	int64 maxUsedSpace = 5;
 	int64 minFreeSpace = 6;
+
+	// plan returns the records that would be deleted without deleting them
+	bool plan = 7;
 }
 
 message DiskUsageRequest {
@@ -56,6 +59,8 @@ message UsageRecord {
 	string RecordType = 10;
 	bool Shared = 11;
 	repeated string Parents = 12;
+	bool Delete = 13;   // set in plan mode when the record would be deleted
+	string Reason = 14; // set in plan mode when the record is kept
 }
 
 message SolveRequest {

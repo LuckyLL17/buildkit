@@ -239,7 +239,7 @@ func (c *Controller) releaseUnreferencedCache(ctx context.Context) error {
 }
 
 func (c *Controller) Prune(req *controlapi.PruneRequest, stream controlapi.Control_PruneServer) error {
-	if c.buildCount.Load() == 0 {
+	if !req.Plan && c.buildCount.Load() == 0 {
 		imageutil.CancelCacheLeases()
 	}
 
@@ -274,6 +274,7 @@ func (c *Controller) Prune(req *controlapi.PruneRequest, stream controlapi.Contr
 					ReservedSpace: req.ReservedSpace,
 					MaxUsedSpace:  req.MaxUsedSpace,
 					MinFreeSpace:  req.MinFreeSpace,
+					Plan:          req.Plan,
 				})
 			})
 		}(w)
@@ -293,7 +294,9 @@ func (c *Controller) Prune(req *controlapi.PruneRequest, stream controlapi.Contr
 			}
 		}()
 		for r := range ch {
-			didPrune = true
+			if !req.Plan {
+				didPrune = true
+			}
 			if err := stream.Send(&controlapi.UsageRecord{
 				// TODO: add worker info
 				ID:          r.ID,
@@ -312,6 +315,8 @@ func (c *Controller) Prune(req *controlapi.PruneRequest, stream controlapi.Contr
 				}(),
 				RecordType: string(r.RecordType),
 				Shared:     r.Shared,
+				Delete:     r.Delete,
+				Reason:     r.Reason,
 			}); err != nil {
 				return err
 			}

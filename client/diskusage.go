@@ -23,6 +23,11 @@ type UsageInfo struct {
 	Description string          `json:"description"`
 	RecordType  UsageRecordType `json:"recordType"`
 	Shared      bool            `json:"shared"`
+
+	// Delete and Reason are populated in plan mode. Delete marks records that
+	// would be removed; Reason explains why a record is kept.
+	Delete bool   `json:"delete"`
+	Reason string `json:"reason,omitempty"`
 }
 
 func (c *Client) DiskUsage(ctx context.Context, opts ...DiskUsageOption) ([]*UsageInfo, error) {

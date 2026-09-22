@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1022,6 +1023,108 @@ func TestPrune(t *testing.T) {
 	dirs, err = os.ReadDir(filepath.Join(tmpdir, "snapshots/snapshots"))
 	require.NoError(t, err)
 	require.Equal(t, 0, len(dirs))
+}
+
+func TestPrunePlan(t *testing.T) {
+	t.Parallel()
+	ctx := namespaces.WithNamespace(t.Context(), "buildkit-test")
+
+	tmpdir := t.TempDir()
+
+	snapshotter, err := native.NewSnapshotter(filepath.Join(tmpdir, "snapshots"))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, snapshotter.Close())
+	})
+
+	co, cleanup, err := newCacheManager(ctx, t, cmOpt{
+		snapshotter:     snapshotter,
+		snapshotterName: "native",
+	})
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	cm := co.manager
+
+	active, err := cm.New(ctx, nil, nil)
+	require.NoError(t, err)
+
+	snap, err := active.Commit(ctx)
+	require.NoError(t, err)
+
+	active2, err := cm.New(ctx, snap, nil, CachePolicyRetain)
+	require.NoError(t, err)
+
+	snap2, err := active2.Commit(ctx)
+	require.NoError(t, err)
+
+	require.NoError(t, snap2.Release(ctx))
+
+	checkDiskUsage(ctx, t, cm, 1, 1)
+
+	runPlan := func(opt client.PruneInfo) map[string]client.UsageInfo {
+		buf := pruneResultBuffer()
+		opt.Plan = true
+		require.NoError(t, cm.Prune(ctx, buf.C, opt))
+		buf.close()
+		require.Equal(t, 2, len(buf.all))
+		require.True(t, slices.IsSortedFunc(buf.all, func(a, b client.UsageInfo) int {
+			return strings.Compare(a.ID, b.ID)
+		}))
+		m := make(map[string]client.UsageInfo, len(buf.all))
+		for _, r := range buf.all {
+			m[r.ID] = r
+		}
+		return m
+	}
+
+	// default plan: snap is in use, active2 would be removed
+	res := runPlan(client.PruneInfo{})
+	r1, r2 := res[snap.ID()], res[active2.ID()]
+	require.True(t, r1.InUse)
+	require.False(t, r1.Delete)
+	require.Equal(t, client.PruneSkipInUse, r1.Reason)
+	require.False(t, r2.InUse)
+	require.True(t, r2.Delete)
+	require.Empty(t, r2.Reason)
+
+	// plan removed nothing
+	checkDiskUsage(ctx, t, cm, 1, 1)
+	dirs, err := os.ReadDir(filepath.Join(tmpdir, "snapshots/snapshots"))
+	require.NoError(t, err)
+	require.Equal(t, 2, len(dirs))
+
+	// filter matching active2 doesn't change the decision
+	res = runPlan(client.PruneInfo{Filter: []string{"id==" + active2.ID()}})
+	require.True(t, res[active2.ID()].Delete)
+
+	// filter matching snap keeps active2 with a filter reason
+	res = runPlan(client.PruneInfo{Filter: []string{"id==" + snap.ID()}})
+	require.False(t, res[active2.ID()].Delete)
+	require.Equal(t, client.PruneSkipFilter, res[active2.ID()].Reason)
+
+	// keep duration keeps active2
+	res = runPlan(client.PruneInfo{KeepDuration: time.Hour})
+	require.False(t, res[active2.ID()].Delete)
+	require.Equal(t, client.PruneSkipKeepDuration, res[active2.ID()].Reason)
+
+	// capacity threshold above the total keeps active2
+	total := res[snap.ID()].Size + res[active2.ID()].Size
+	res = runPlan(client.PruneInfo{MaxUsedSpace: total + 1})
+	require.False(t, res[active2.ID()].Delete)
+	require.Equal(t, client.PruneSkipCapacity, res[active2.ID()].Reason)
+
+	// real prune after the plans still deletes active2
+	buf := pruneResultBuffer()
+	require.NoError(t, cm.Prune(ctx, buf.C, client.PruneInfo{}))
+	buf.close()
+	require.Equal(t, 1, len(buf.all))
+	require.Equal(t, active2.ID(), buf.all[0].ID)
+
+	checkDiskUsage(ctx, t, cm, 1, 0)
+	dirs, err = os.ReadDir(filepath.Join(tmpdir, "snapshots/snapshots"))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(dirs))
 }
 
 func TestLazyCommit(t *testing.T) {

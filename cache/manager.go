@@ -1013,6 +1013,12 @@ func (cm *cacheManager) createDiffRef(ctx context.Context, parents parentRefs, d
 }
 
 func (cm *cacheManager) Prune(ctx context.Context, ch chan client.UsageInfo, opts ...client.PruneInfo) error {
+	for _, opt := range opts {
+		if opt.Plan {
+			return cm.plan(ctx, ch, opt)
+		}
+	}
+
 	cm.muPrune.Lock()
 
 	for _, opt := range opts {
@@ -1112,6 +1118,210 @@ func calculateKeepBytes(totalSize int64, dstat disk.DiskStat, opt client.PruneIn
 	keepBytes = max(keepBytes, opt.ReservedSpace)
 
 	return keepBytes
+}
+
+// plan evaluates opt and sends a UsageInfo for every record considered. Records
+// that would be deleted have Delete set; kept records carry a skip Reason. Plan
+// never deletes or modifies records or their metadata.
+func (cm *cacheManager) plan(ctx context.Context, ch chan client.UsageInfo, opt client.PruneInfo) error {
+	filter, err := filters.ParseAll(opt.Filter...)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse prune filters %v", opt.Filter)
+	}
+
+	var check ExternalRefChecker
+	if f := cm.PruneRefChecker; f != nil && (!opt.All || len(opt.Filter) > 0) {
+		check, err = f()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
+	type planRecord struct {
+		cr          *cacheRecord
+		info        client.UsageInfo
+		parentChain []digest.Digest
+	}
+	records := map[string]*planRecord{}
+
+	cm.mu.Lock()
+	for _, cr0 := range cm.records {
+		cr := cr0
+		cr.mu.Lock()
+		if cr.equalImmutable != nil && len(cr.equalImmutable.refs) > 0 || cr.equalMutable != nil && len(cr.refs) == 0 {
+			cr.mu.Unlock()
+			continue
+		}
+		if cr.isDead() {
+			cr.mu.Unlock()
+			continue
+		}
+
+		recordType := cr.GetRecordType()
+		if recordType == "" {
+			recordType = client.UsageRecordTypeRegular
+		}
+		usageCount, lastUsedAt := cr.getLastUsed()
+		pr := &planRecord{
+			cr: cr,
+			info: client.UsageInfo{
+				ID:          cr.ID(),
+				Mutable:     cr.mutable,
+				InUse:       len(cr.refs) > 0,
+				CreatedAt:   cr.GetCreatedAt(),
+				Description: cr.GetDescription(),
+				LastUsedAt:  lastUsedAt,
+				UsageCount:  usageCount,
+				RecordType:  recordType,
+			},
+			parentChain: cr.layerDigestChain(),
+		}
+		switch cr.kind() {
+		case Layer:
+			pr.info.Parents = []string{cr.layerParent.ID()}
+		case Merge:
+			pr.info.Parents = make([]string, len(cr.mergeParents))
+			for i, p := range cr.mergeParents {
+				pr.info.Parents[i] = p.ID()
+			}
+		case Diff:
+			if cr.diffParents.lower != nil {
+				pr.info.Parents = append(pr.info.Parents, cr.diffParents.lower.ID())
+			}
+			if cr.diffParents.upper != nil {
+				pr.info.Parents = append(pr.info.Parents, cr.diffParents.upper.ID())
+			}
+		}
+		records[cr.ID()] = pr
+		cr.mu.Unlock()
+	}
+	cm.mu.Unlock()
+
+	if check != nil {
+		var markShared func(string)
+		markShared = func(id string) {
+			pr, ok := records[id]
+			if !ok || pr.info.Shared {
+				return
+			}
+			pr.info.Shared = true
+			for _, p := range pr.info.Parents {
+				markShared(p)
+			}
+		}
+		for id, pr := range records {
+			if pr.info.Shared {
+				continue
+			}
+			if check.Exists(id, pr.parentChain) {
+				markShared(id)
+			}
+		}
+	}
+
+	ids := make([]string, 0, len(records))
+	for id := range records {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+
+	gcMode := opt.MaxUsedSpace != 0 || opt.ReservedSpace != 0 || opt.MinFreeSpace != 0
+
+	eg, egctx := errgroup.WithContext(ctx)
+	for _, id := range ids {
+		pr := records[id]
+		size := pr.cr.cachedSize()
+		if size == sizeUnknown && pr.cr.equalImmutable != nil {
+			size = pr.cr.equalImmutable.cachedSize()
+		}
+		if size != sizeUnknown {
+			pr.info.Size = size
+			continue
+		}
+		eg.Go(func() error {
+			s, err := pr.cr.sizeReadonly(egctx)
+			if err != nil {
+				return err
+			}
+			pr.info.Size = s
+			return nil
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+
+	totalSize := int64(0)
+	for _, pr := range records {
+		if !pr.info.Shared {
+			totalSize += pr.info.Size
+		}
+	}
+
+	cutOff := time.Now().Add(-opt.KeepDuration)
+	for _, id := range ids {
+		pr := &records[id].info
+		switch {
+		case pr.InUse:
+			pr.Reason = client.PruneSkipInUse
+		case !opt.All && (pr.RecordType == client.UsageRecordTypeInternal || pr.RecordType == client.UsageRecordTypeFrontend):
+			pr.Reason = client.PruneSkipType
+		case !opt.All && pr.Shared:
+			pr.Reason = client.PruneSkipShared
+		case opt.KeepDuration != 0 && pr.LastUsedAt != nil && pr.LastUsedAt.After(cutOff):
+			pr.Reason = client.PruneSkipKeepDuration
+		case !filter.Match(adaptUsageInfo(pr)):
+			pr.Reason = client.PruneSkipFilter
+		default:
+			pr.Delete = true
+		}
+	}
+
+	if gcMode {
+		var dstat disk.DiskStat
+		if opt.MinFreeSpace != 0 {
+			dstat, err = disk.GetDiskStat(cm.root)
+			if err != nil {
+				return err
+			}
+		}
+		keepBytes := calculateKeepBytes(totalSize, dstat, opt)
+
+		toDelete := make([]*deleteRecord, 0)
+		for _, pr := range records {
+			if pr.info.Delete {
+				toDelete = append(toDelete, &deleteRecord{
+					cacheRecord: pr.cr,
+					lastUsedAt:  pr.info.LastUsedAt,
+					usageCount:  pr.info.UsageCount,
+				})
+			}
+		}
+		sortDeleteRecords(toDelete)
+
+		running := totalSize
+		for _, dr := range toDelete {
+			if running < keepBytes {
+				pr := records[dr.ID()]
+				pr.info.Delete = false
+				pr.info.Reason = client.PruneSkipCapacity
+				continue
+			}
+			running -= records[dr.ID()].info.Size
+		}
+	}
+
+	for _, id := range ids {
+		if ch == nil {
+			continue
+		}
+		select {
+		case ch <- records[id].info:
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		}
+	}
+	return nil
 }
 
 func (cm *cacheManager) pruneOnce(ctx context.Context, ch chan client.UsageInfo, opt pruneOpt) (releasedSize, releasedCount int64, err error) {
