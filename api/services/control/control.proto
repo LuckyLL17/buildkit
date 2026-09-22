@@ -115,6 +115,45 @@ message SolveResponse {
 
 message StatusRequest {
 	string Ref = 1;
+	// Filters restricts the status events that are sent. Multiple filters
+	// are alternatives (OR): an event is sent if it matches any of them.
+	// When no filters are set all events are sent, matching the default
+	// streaming behavior.
+	repeated StatusFilter Filters = 2;
+	// Snapshot sends the current state of the build as an ordered initial
+	// snapshot before continuing with the regular incremental events.
+	bool Snapshot = 3;
+}
+
+// StatusEventType identifies a kind of status event.
+enum StatusEventType {
+	UNKNOWN = 0;
+	VERTEX = 1;
+	STATUS = 2;
+	LOG = 3;
+	WARNING = 4;
+}
+
+// StatusCompletion selects vertexes by their completion state.
+enum StatusCompletion {
+	COMPLETION_ANY = 0;
+	COMPLETION_RUNNING = 1;
+	COMPLETION_COMPLETED = 2;
+}
+
+// StatusFilter defines a filter for status events.
+message StatusFilter {
+	// Vertexes matches vertexes by their digest or name. Status, log and
+	// warning events that reference a matched vertex are included as well.
+	repeated string Vertexes = 1;
+	// ProgressGroup matches vertexes that belong to the given progress group.
+	pb.ProgressGroup ProgressGroup = 2;
+	// Types restricts which event types are sent. When unset, all event
+	// types are sent.
+	repeated StatusEventType Types = 3;
+	// Completed filters vertexes, and events that reference them, by their
+	// completion state.
+	StatusCompletion Completed = 4;
 }
 
 message StatusResponse {
@@ -122,6 +161,10 @@ message StatusResponse {
 	repeated VertexStatus statuses = 2;
 	repeated VertexLog logs = 3;
 	repeated VertexWarning warnings = 4;
+	// Snapshot is set on the messages that make up the initial snapshot in
+	// snapshot mode. The snapshot is concluded by an empty message with
+	// Snapshot unset, after which regular incremental events are sent.
+	bool snapshot = 5;
 }
 
 message Vertex {

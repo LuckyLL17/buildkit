@@ -405,7 +405,11 @@ func (h *Queue) UpdateRef(ctx context.Context, ref string, upt func(r *controlap
 	return nil
 }
 
-func (h *Queue) Status(ctx context.Context, ref string, st chan<- *client.SolveStatus) error {
+func (h *Queue) Status(ctx context.Context, ref string, st chan<- *client.SolveStatus, opts ...client.StatusOptions) error {
+	var opt client.StatusOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
 	h.init()
 	var br controlapi.BuildHistoryRecord
 	if err := h.opt.DB.View(func(tx *bolt.Tx) error {
@@ -446,6 +450,16 @@ func (h *Queue) Status(ctx context.Context, ref string, st chan<- *client.SolveS
 
 	buf := make([]byte, 32*1024)
 
+	proc := client.NewStatusProcessor(opt)
+	send := func(ss *client.SolveStatus) error {
+		select {
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		case st <- ss:
+			return nil
+		}
+	}
+
 	for {
 		_, err := io.ReadAtLeast(brdr, buf[:4], 4)
 		if err != nil {
@@ -466,7 +480,27 @@ func (h *Queue) Status(ctx context.Context, ref string, st chan<- *client.SolveS
 		if err := sr.UnmarshalVT(buf[:sz]); err != nil {
 			return err
 		}
-		st <- client.NewSolveStatus(&sr)
+		ss := proc.Apply(client.NewSolveStatus(&sr))
+		if ss != nil && !opt.Snapshot {
+			if err := send(ss); err != nil {
+				return err
+			}
+		}
+	}
+
+	if opt.Snapshot {
+		msgs := client.SnapshotMessages(proc.Snapshot())
+		if len(msgs) == 0 {
+			msgs = []*client.SolveStatus{{Snapshot: true}}
+		}
+		for _, ss := range msgs {
+			if err := send(ss); err != nil {
+				return err
+			}
+		}
+		if err := send(&client.SolveStatus{}); err != nil {
+			return err
+		}
 	}
 
 	return nil

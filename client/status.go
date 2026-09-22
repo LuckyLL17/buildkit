@@ -1,10 +1,13 @@
 package client
 
 import (
+	"context"
+	"io"
 	"time"
 
 	controlapi "github.com/moby/buildkit/api/services/control"
 	digest "github.com/opencontainers/go-digest"
+	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -60,6 +63,7 @@ func NewSolveStatus(resp *controlapi.StatusResponse) *SolveStatus {
 			Range:      v.Ranges,
 		})
 	}
+	s.Snapshot = resp.Snapshot
 	return s
 }
 
@@ -67,7 +71,7 @@ func (ss *SolveStatus) Marshal() (out []*controlapi.StatusResponse) {
 	logSize := 0
 	for {
 		retry := false
-		sr := controlapi.StatusResponse{}
+		sr := controlapi.StatusResponse{Snapshot: ss.Snapshot}
 		for _, v := range ss.Vertexes {
 			sr.Vertexes = append(sr.Vertexes, &controlapi.Vertex{
 				Digest:        string(v.Digest),
@@ -157,4 +161,43 @@ func timestampToPB(ts *time.Time) *timestamppb.Timestamp {
 		return timestamppb.New(*ts)
 	}
 	return nil
+}
+
+// Status opens a status stream for the build identified by ref and sends the
+// status updates to statusChan, which gets closed when the stream ends. With
+// no StatusOptions the default incremental event stream is sent. Filters and
+// snapshot mode can be set through opts.
+func (c *Client) Status(ctx context.Context, ref string, statusChan chan *SolveStatus, opts ...StatusOptions) error {
+	if statusChan == nil {
+		return errors.New("status channel cannot be nil")
+	}
+	defer close(statusChan)
+
+	req := &controlapi.StatusRequest{Ref: ref}
+	if len(opts) > 0 {
+		req.Filters = opts[0].ToPBFilters()
+		req.Snapshot = opts[0].Snapshot
+	}
+
+	cl, err := c.ControlClient().Status(ctx, req)
+	if err != nil {
+		return errors.Wrap(err, "failed to get status")
+	}
+	for {
+		resp, err := cl.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if errors.Is(err, context.Canceled) || context.Cause(ctx) != nil {
+				return nil
+			}
+			return errors.Wrap(err, "failed to receive status")
+		}
+		select {
+		case statusChan <- NewSolveStatus(resp):
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }

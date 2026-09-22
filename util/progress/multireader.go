@@ -26,6 +26,51 @@ func NewMultiReader(pr Reader) *MultiReader {
 	return mr
 }
 
+// StateReader creates a reader and atomically captures the progress that was
+// sent before the reader attached. The returned state is an exact point-in-
+// time copy: events captured in state are never delivered through the
+// reader, and events sent after attachment are only delivered through the
+// reader (no duplicates, no gap). This allows callers to convert the backlog
+// into an initial snapshot before consuming live increments.
+func (mr *MultiReader) StateReader(ctx context.Context) (Reader, []*Progress) {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
+
+	pr, ctx, closeWriter := NewContext(ctx)
+	pw, _, ctx := NewFromContext(ctx)
+
+	w := pw.(*progressWriter)
+
+	state := append([]*Progress(nil), mr.sent...)
+
+	select {
+	case <-mr.done:
+		// The main reader has already finished. Deliver the captured state
+		// and then close the new reader with the terminal cause.
+		w.Close()
+		closeWriter(mr.doneCause)
+	default:
+		mr.writers[w] = closeWriter
+		go func() {
+			select {
+			case <-ctx.Done():
+			case <-mr.done:
+			}
+			mr.mu.Lock()
+			defer mr.mu.Unlock()
+			delete(mr.writers, w)
+			closeWriter(context.Cause(ctx))
+		}()
+	}
+
+	if !mr.initialized {
+		go mr.handle(context.WithoutCancel(ctx))
+		mr.initialized = true
+	}
+
+	return pr, state
+}
+
 func (mr *MultiReader) Reader(ctx context.Context) Reader {
 	mr.mu.Lock()
 	defer mr.mu.Unlock()

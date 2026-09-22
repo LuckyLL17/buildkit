@@ -597,9 +597,11 @@ func (c *Controller) Status(req *controlapi.StatusRequest, stream controlapi.Con
 	}
 	ch := make(chan *client.SolveStatus, 8)
 
+	opts := client.StatusOptionsFromPB(req)
+
 	eg, ctx := errgroup.WithContext(stream.Context())
 	eg.Go(func() error {
-		return c.solver.Status(ctx, req.Ref, ch)
+		return c.solver.Status(ctx, req.Ref, ch, opts)
 	})
 
 	eg.Go(func() error {

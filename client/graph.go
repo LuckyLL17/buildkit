@@ -52,6 +52,10 @@ type SolveStatus struct {
 	Statuses []*VertexStatus  `json:"statuses,omitempty"`
 	Logs     []*VertexLog     `json:"logs,omitempty"`
 	Warnings []*VertexWarning `json:"warnings,omitempty"`
+	// Snapshot marks messages that make up the initial snapshot in snapshot
+	// mode. An empty message with Snapshot false marks the end of the snapshot,
+	// after which regular incremental events are sent.
+	Snapshot bool `json:"-"`
 }
 
 type SolveResponse struct {

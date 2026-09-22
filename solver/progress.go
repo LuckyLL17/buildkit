@@ -14,15 +14,58 @@ import (
 	digest "github.com/opencontainers/go-digest"
 )
 
-func (j *Job) Status(ctx context.Context, ch chan *client.SolveStatus) error {
+func (j *Job) Status(ctx context.Context, ch chan *client.SolveStatus, opts ...client.StatusOptions) error {
+	var opt client.StatusOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+
 	vs := &vertexStream{cache: map[digest.Digest]*client.Vertex{}, wasCached: make(map[digest.Digest]struct{})}
-	pr := j.pr.Reader(ctx)
+	proc := client.NewStatusProcessor(opt)
+
+	var pr progress.Reader
+	var state []*progress.Progress
+	if opt.Snapshot {
+		pr, state = j.pr.StateReader(ctx)
+	} else {
+		pr = j.pr.Reader(ctx)
+	}
+
+	send := func(ss *client.SolveStatus) error {
+		select {
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		case ch <- ss:
+			return nil
+		}
+	}
+
 	defer func() {
 		if enc := vs.encore(); len(enc) > 0 {
-			ch <- &client.SolveStatus{Vertexes: enc}
+			if ss := proc.Apply(&client.SolveStatus{Vertexes: enc}); ss != nil {
+				_ = send(ss)
+			}
 		}
 		close(ch)
 	}()
+
+	if opt.Snapshot {
+		if len(state) > 0 {
+			proc.Apply(progressToStatus(ctx, state, vs))
+		}
+		msgs := client.SnapshotMessages(proc.Snapshot())
+		if len(msgs) == 0 {
+			msgs = []*client.SolveStatus{{Snapshot: true}}
+		}
+		for _, ss := range msgs {
+			if err := send(ss); err != nil {
+				return err
+			}
+		}
+		if err := send(&client.SolveStatus{}); err != nil {
+			return err
+		}
+	}
 
 	for {
 		p, err := pr.Read(ctx)
@@ -32,74 +75,77 @@ func (j *Job) Status(ctx context.Context, ch chan *client.SolveStatus) error {
 			}
 			return err
 		}
-		ss := &client.SolveStatus{}
-		for _, p := range p {
-			switch v := p.Sys.(type) {
-			case client.Vertex:
-				ss.Vertexes = append(ss.Vertexes, vs.append(v)...)
-
-			case progress.Status:
-				vtx, ok := p.Meta("vertex")
-				if !ok {
-					bklog.G(ctx).Warnf("progress %s status without vertex info", p.ID)
-					continue
-				}
-				vs := &client.VertexStatus{
-					ID:        p.ID,
-					Vertex:    vtx.(digest.Digest),
-					Name:      v.Action,
-					Total:     int64(v.Total),
-					Current:   int64(v.Current),
-					Timestamp: p.Timestamp,
-					Started:   v.Started,
-					Completed: v.Completed,
-				}
-				ss.Statuses = append(ss.Statuses, vs)
-			case client.VertexLog:
-				vtx, ok := p.Meta("vertex")
-				if !ok {
-					bklog.G(ctx).Warnf("progress %s log without vertex info", p.ID)
-					continue
-				}
-				if v.Vertex == "" {
-					v.Vertex = vtx.(digest.Digest)
-				}
-				v.Timestamp = p.Timestamp
-				ss.Logs = append(ss.Logs, &v)
-			case client.VertexWarning:
-				vtx, ok := p.Meta("vertex")
-				if !ok {
-					bklog.G(ctx).Warnf("progress %s warning without vertex info", p.ID)
-					continue
-				}
-				if v.Vertex == "" {
-					v.Vertex = vtx.(digest.Digest)
-				}
-				ss.Warnings = append(ss.Warnings, &v)
+		if ss := proc.Apply(progressToStatus(ctx, p, vs)); ss != nil {
+			if err := send(ss); err != nil {
+				return err
 			}
-		}
-		slices.SortFunc(ss.Vertexes, func(a, b *client.Vertex) int {
-			if a.Started == nil {
-				return -1
-			}
-			if b.Started == nil {
-				return 1
-			}
-			return a.Started.Compare(*b.Started)
-		})
-		slices.SortFunc(ss.Statuses, func(a, b *client.VertexStatus) int {
-			return a.Timestamp.Compare(b.Timestamp)
-		})
-		slices.SortFunc(ss.Logs, func(a, b *client.VertexLog) int {
-			return a.Timestamp.Compare(b.Timestamp)
-		})
-
-		select {
-		case <-ctx.Done():
-			return context.Cause(ctx)
-		case ch <- ss:
 		}
 	}
+}
+
+func progressToStatus(ctx context.Context, p []*progress.Progress, vs *vertexStream) *client.SolveStatus {
+	ss := &client.SolveStatus{}
+	for _, p := range p {
+		switch v := p.Sys.(type) {
+		case client.Vertex:
+			ss.Vertexes = append(ss.Vertexes, vs.append(v)...)
+
+		case progress.Status:
+			vtx, ok := p.Meta("vertex")
+			if !ok {
+				bklog.G(ctx).Warnf("progress %s status without vertex info", p.ID)
+				continue
+			}
+			vs := &client.VertexStatus{
+				ID:        p.ID,
+				Vertex:    vtx.(digest.Digest),
+				Name:      v.Action,
+				Total:     int64(v.Total),
+				Current:   int64(v.Current),
+				Timestamp: p.Timestamp,
+				Started:   v.Started,
+				Completed: v.Completed,
+			}
+			ss.Statuses = append(ss.Statuses, vs)
+		case client.VertexLog:
+			vtx, ok := p.Meta("vertex")
+			if !ok {
+				bklog.G(ctx).Warnf("progress %s log without vertex info", p.ID)
+				continue
+			}
+			if v.Vertex == "" {
+				v.Vertex = vtx.(digest.Digest)
+			}
+			v.Timestamp = p.Timestamp
+			ss.Logs = append(ss.Logs, &v)
+		case client.VertexWarning:
+			vtx, ok := p.Meta("vertex")
+			if !ok {
+				bklog.G(ctx).Warnf("progress %s warning without vertex info", p.ID)
+				continue
+			}
+			if v.Vertex == "" {
+				v.Vertex = vtx.(digest.Digest)
+			}
+			ss.Warnings = append(ss.Warnings, &v)
+		}
+	}
+	slices.SortFunc(ss.Vertexes, func(a, b *client.Vertex) int {
+		if a.Started == nil {
+			return -1
+		}
+		if b.Started == nil {
+			return 1
+		}
+		return a.Started.Compare(*b.Started)
+	})
+	slices.SortFunc(ss.Statuses, func(a, b *client.VertexStatus) int {
+		return a.Timestamp.Compare(b.Timestamp)
+	})
+	slices.SortFunc(ss.Logs, func(a, b *client.VertexLog) int {
+		return a.Timestamp.Compare(b.Timestamp)
+	})
+	return ss
 }
 
 type vertexStream struct {

@@ -58,6 +58,10 @@ type SolveOpt struct {
 	SourcePolicyProvider  session.Attachable
 	ProxyNetwork          bool
 	Ref                   string
+	// StatusOptions configures the status stream delivered to the Solve
+	// status channel. The zero value preserves the default streaming
+	// behavior.
+	StatusOptions StatusOptions
 }
 
 type ExportEntry struct {
@@ -368,7 +372,9 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 
 	eg.Go(func() error {
 		stream, err := c.ControlClient().Status(statusContext, &controlapi.StatusRequest{
-			Ref: ref,
+			Ref:      ref,
+			Filters:  opt.StatusOptions.ToPBFilters(),
+			Snapshot: opt.StatusOptions.Snapshot,
 		})
 		if err != nil {
 			return errors.Wrap(err, "failed to get status")

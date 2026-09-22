@@ -2,10 +2,14 @@ package debug
 
 import (
 	"fmt"
+	"os"
 
 	controlapi "github.com/moby/buildkit/api/services/control"
+	"github.com/moby/buildkit/client"
 	bccommon "github.com/moby/buildkit/cmd/buildctl/common"
+	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/appcontext"
+	"github.com/pkg/errors"
 	"github.com/urfave/cli/v3"
 )
 
@@ -22,10 +26,40 @@ var MonitorCommand = &cli.Command{
 			Name:  "ref",
 			Usage: "show events for a specific build",
 		},
+		&cli.StringSliceFlag{
+			Name:  "vertex",
+			Usage: "filter status events by vertex digest or name (can be repeated)",
+		},
+		&cli.StringFlag{
+			Name:  "progress-group",
+			Usage: "filter status events by progress group ID",
+		},
+		&cli.StringSliceFlag{
+			Name:  "event",
+			Usage: "filter status events by type: vertex, status, log, warning (can be repeated)",
+		},
+		&cli.BoolFlag{
+			Name:  "snapshot",
+			Usage: "send the current build state as an initial snapshot before incremental events",
+		},
 	},
 }
 
 func monitor(clicontext *cli.Command) error {
+	if hasStatusFilters(clicontext) {
+		return monitorStatus(clicontext)
+	}
+	return monitorHistory(clicontext)
+}
+
+func hasStatusFilters(clicontext *cli.Command) bool {
+	return clicontext.Bool("snapshot") ||
+		len(clicontext.StringSlice("vertex")) > 0 ||
+		clicontext.String("progress-group") != "" ||
+		len(clicontext.StringSlice("event")) > 0
+}
+
+func monitorHistory(clicontext *cli.Command) error {
 	c, err := bccommon.ResolveClient(clicontext)
 	if err != nil {
 		return err
@@ -85,5 +119,119 @@ func monitor(clicontext *cli.Command) error {
 				fmt.Printf("  [%s] attestation: %s\n", k, att)
 			}
 		}
+	}
+}
+
+func monitorStatus(clicontext *cli.Command) error {
+	ref := clicontext.String("ref")
+	if ref == "" {
+		return errors.New("build ref must be specified with --ref when using status filters")
+	}
+
+	var types []client.StatusEventType
+	for _, t := range clicontext.StringSlice("event") {
+		et, err := parseStatusEventType(t)
+		if err != nil {
+			return err
+		}
+		types = append(types, et)
+	}
+
+	f := client.StatusFilter{
+		Vertexes: clicontext.StringSlice("vertex"),
+		Types:    types,
+	}
+	if group := clicontext.String("progress-group"); group != "" {
+		f.ProgressGroup = &pb.ProgressGroup{Id: group}
+	}
+	if clicontext.Bool("completed") {
+		completed := true
+		f.Completed = &completed
+	}
+
+	opts := client.StatusOptions{
+		Filters:  []client.StatusFilter{f},
+		Snapshot: clicontext.Bool("snapshot"),
+	}
+
+	c, err := bccommon.ResolveClient(clicontext)
+	if err != nil {
+		return err
+	}
+
+	ctx := appcontext.Context()
+	ch := make(chan *client.SolveStatus, 8)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- c.Status(ctx, ref, ch, opts)
+	}()
+
+	printedSnapshotHeader := false
+	afterSnapshot := !opts.Snapshot
+	for ss := range ch {
+		if ss.Snapshot {
+			if !printedSnapshotHeader {
+				fmt.Println("snapshot:")
+				printedSnapshotHeader = true
+			}
+			printSolveStatus("  ", ss)
+			continue
+		}
+		if opts.Snapshot && !afterSnapshot {
+			fmt.Println("events:")
+			afterSnapshot = true
+		}
+		printSolveStatus("  ", ss)
+	}
+	return <-errCh
+}
+
+func parseStatusEventType(t string) (client.StatusEventType, error) {
+	switch t {
+	case "vertex":
+		return client.StatusEventVertex, nil
+	case "status":
+		return client.StatusEventStatus, nil
+	case "log":
+		return client.StatusEventLog, nil
+	case "warning":
+		return client.StatusEventWarning, nil
+	default:
+		return 0, errors.Errorf("unknown event type %q (supported: vertex, status, log, warning)", t)
+	}
+}
+
+func printSolveStatus(prefix string, ss *client.SolveStatus) {
+	for _, v := range ss.Vertexes {
+		state := "running"
+		switch {
+		case v.Error != "":
+			state = "error: " + v.Error
+		case v.Cached:
+			state = "cached"
+		case v.Completed != nil:
+			state = "completed"
+		case v.Started != nil:
+			state = "started"
+		}
+		group := ""
+		if v.ProgressGroup != nil {
+			group = " group:" + v.ProgressGroup.Id
+		}
+		fmt.Printf("%svertex: %s name:%q%s %s\n", prefix, v.Digest, v.Name, group, state)
+	}
+	for _, st := range ss.Statuses {
+		fmt.Printf("%sstatus: %s vertex:%s %d/%d\n", prefix, st.Name, st.Vertex, st.Current, st.Total)
+	}
+	for _, l := range ss.Logs {
+		fmt.Printf("%slog: %s stream:%d ", prefix, l.Vertex, l.Stream)
+		os.Stdout.Write(l.Data)
+		if len(l.Data) == 0 || l.Data[len(l.Data)-1] != '\n' {
+			fmt.Println()
+		}
+	}
+	for _, w := range ss.Warnings {
+		fmt.Printf("%swarning: %s level:%d %s\n", prefix, w.Vertex, w.Level, string(w.Short))
 	}
 }

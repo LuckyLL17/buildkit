@@ -285,6 +285,14 @@ func (m *StatusRequest) CloneVT() *StatusRequest {
 	}
 	r := new(StatusRequest)
 	r.Ref = m.Ref
+	if rhs := m.Filters; rhs != nil {
+		tmpContainer := make([]*StatusFilter, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.Filters = tmpContainer
+	}
+	r.Snapshot = m.Snapshot
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -296,11 +304,40 @@ func (m *StatusRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *StatusFilter) CloneVT() *StatusFilter {
+	if m == nil {
+		return (*StatusFilter)(nil)
+	}
+	r := new(StatusFilter)
+	if rhs := m.Vertexes; rhs != nil {
+		tmpContainer := make([]string, len(rhs))
+		copy(tmpContainer, rhs)
+		r.Vertexes = tmpContainer
+	}
+	r.ProgressGroup = m.ProgressGroup.CloneVT()
+	if rhs := m.Types; rhs != nil {
+		tmpContainer := make([]StatusEventType, len(rhs))
+		copy(tmpContainer, rhs)
+		r.Types = tmpContainer
+	}
+	r.Completed = m.Completed
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *StatusFilter) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *StatusResponse) CloneVT() *StatusResponse {
 	if m == nil {
 		return (*StatusResponse)(nil)
 	}
 	r := new(StatusResponse)
+	r.Snapshot = m.Snapshot
 	if rhs := m.Vertexes; rhs != nil {
 		tmpContainer := make([]*Vertex, len(rhs))
 		for k, v := range rhs {
@@ -1203,11 +1240,71 @@ func (this *StatusRequest) EqualVT(that *StatusRequest) bool {
 	if this.Ref != that.Ref {
 		return false
 	}
+	if len(this.Filters) != len(that.Filters) {
+		return false
+	}
+	for i, vx := range this.Filters {
+		vy := that.Filters[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &StatusFilter{}
+			}
+			if q == nil {
+				q = &StatusFilter{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
+	if this.Snapshot != that.Snapshot {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
 func (this *StatusRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*StatusRequest)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *StatusFilter) EqualVT(that *StatusFilter) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if len(this.Vertexes) != len(that.Vertexes) {
+		return false
+	}
+	for i, vx := range this.Vertexes {
+		vy := that.Vertexes[i]
+		if vx != vy {
+			return false
+		}
+	}
+	if !this.ProgressGroup.EqualVT(that.ProgressGroup) {
+		return false
+	}
+	if len(this.Types) != len(that.Types) {
+		return false
+	}
+	for i, vx := range this.Types {
+		vy := that.Types[i]
+		if vx != vy {
+			return false
+		}
+	}
+	if this.Completed != that.Completed {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *StatusFilter) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*StatusFilter)
 	if !ok {
 		return false
 	}
@@ -1286,6 +1383,9 @@ func (this *StatusResponse) EqualVT(that *StatusResponse) bool {
 				return false
 			}
 		}
+	}
+	if this.Snapshot != that.Snapshot {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -2678,12 +2778,112 @@ func (m *StatusRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Snapshot {
+		i--
+		if m.Snapshot {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.Filters) > 0 {
+		for iNdEx := len(m.Filters) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.Filters[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
 	if len(m.Ref) > 0 {
 		i -= len(m.Ref)
 		copy(dAtA[i:], m.Ref)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ref)))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *StatusFilter) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StatusFilter) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *StatusFilter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Completed != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Completed))
+		i--
+		dAtA[i] = 0x20
+	}
+	if len(m.Types) > 0 {
+		var pksize2 int
+		for _, num := range m.Types {
+			pksize2 += protohelpers.SizeOfVarint(uint64(num))
+		}
+		i -= pksize2
+		j1 := i
+		for _, num1 := range m.Types {
+			num := uint64(num1)
+			for num >= 1<<7 {
+				dAtA[j1] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j1++
+			}
+			dAtA[j1] = uint8(num)
+			j1++
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(pksize2))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.ProgressGroup != nil {
+		size, err := m.ProgressGroup.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Vertexes) > 0 {
+		for iNdEx := len(m.Vertexes) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Vertexes[iNdEx])
+			copy(dAtA[i:], m.Vertexes[iNdEx])
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Vertexes[iNdEx])))
+			i--
+			dAtA[i] = 0xa
+		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -2717,6 +2917,16 @@ func (m *StatusResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Snapshot {
+		i--
+		if m.Snapshot {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x28
 	}
 	if len(m.Warnings) > 0 {
 		for iNdEx := len(m.Warnings) - 1; iNdEx >= 0; iNdEx-- {
@@ -4301,6 +4511,45 @@ func (m *StatusRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if len(m.Filters) > 0 {
+		for _, e := range m.Filters {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if m.Snapshot {
+		n += 2
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *StatusFilter) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Vertexes) > 0 {
+		for _, s := range m.Vertexes {
+			l = len(s)
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if m.ProgressGroup != nil {
+		l = m.ProgressGroup.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.Types) > 0 {
+		l = 0
+		for _, e := range m.Types {
+			l += protohelpers.SizeOfVarint(uint64(e))
+		}
+		n += 1 + protohelpers.SizeOfVarint(uint64(l)) + l
+	}
+	if m.Completed != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Completed))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -4334,6 +4583,9 @@ func (m *StatusResponse) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.Snapshot {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -7179,6 +7431,263 @@ func (m *StatusRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ref = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Filters", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Filters = append(m.Filters, &StatusFilter{})
+			if err := m.Filters[len(m.Filters)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Snapshot", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Snapshot = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StatusFilter) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StatusFilter: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StatusFilter: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Vertexes", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Vertexes = append(m.Vertexes, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ProgressGroup", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ProgressGroup == nil {
+				m.ProgressGroup = &pb.ProgressGroup{}
+			}
+			if err := m.ProgressGroup.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType == 0 {
+				var v StatusEventType
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= StatusEventType(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.Types = append(m.Types, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return protohelpers.ErrInvalidLength
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				for iNdEx < postIndex {
+					var v StatusEventType
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return protohelpers.ErrIntOverflow
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= StatusEventType(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.Types = append(m.Types, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Types", wireType)
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Completed", wireType)
+			}
+			m.Completed = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Completed |= StatusCompletion(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -7366,6 +7875,26 @@ func (m *StatusResponse) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Snapshot", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Snapshot = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

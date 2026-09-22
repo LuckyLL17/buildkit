@@ -470,8 +470,8 @@ func (s *Solver) leaseManager() (*leaseutil.Manager, error) {
 	return w.LeaseManager(), nil
 }
 
-func (s *Solver) Status(ctx context.Context, id string, statusChan chan *client.SolveStatus) error {
-	if err := s.history.Status(ctx, id, statusChan); err != nil {
+func (s *Solver) Status(ctx context.Context, id string, statusChan chan *client.SolveStatus, opts ...client.StatusOptions) error {
+	if err := s.history.Status(ctx, id, statusChan, opts...); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			close(statusChan)
 			return err
@@ -485,7 +485,7 @@ func (s *Solver) Status(ctx context.Context, id string, statusChan chan *client.
 		close(statusChan)
 		return err
 	}
-	return j.Status(ctx, statusChan)
+	return j.Status(ctx, statusChan, opts...)
 }
 
 func defaultResolver(wc *worker.Controller) ResolveWorkerFunc {
