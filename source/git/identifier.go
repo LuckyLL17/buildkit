@@ -46,6 +46,11 @@ type GitIdentifier struct {
 	// checkout mount root (filename "bundle") instead of a worktree.
 	CheckoutBundle bool
 
+	// SparseCheckout optionally restricts the checked out worktree to a set
+	// of directories or glob patterns. When empty, the full worktree is
+	// checked out.
+	SparseCheckout gitutil.SparseCheckout
+
 	VerifySignature *GitSignatureVerifyOptions
 }
 
@@ -153,6 +158,9 @@ func validateBundleAttrs(id *GitIdentifier) error {
 		}
 		if id.Subdir != "" {
 			return errors.New("git.checkoutbundle is incompatible with git.subdir")
+		}
+		if id.SparseCheckout.Enabled() {
+			return errors.New("git.checkoutbundle is incompatible with git.sparsecheckout")
 		}
 	}
 	return nil

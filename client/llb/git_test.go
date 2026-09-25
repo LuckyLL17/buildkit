@@ -137,7 +137,35 @@ func TestGit(t *testing.T) {
 				"git.checkoutbundle":   "true",
 			},
 		},
+		{
+			name:       "sparse checkout dirs",
+			st:         Git("github.com/foo/bar.git", "ref", GitSparseCheckout([]string{"cmd", "a/b"})),
+			identifier: "git://github.com/foo/bar.git#ref",
+			attrs: map[string]string{
+				"git.authheadersecret": "GIT_AUTH_HEADER",
+				"git.authtokensecret":  "GIT_AUTH_TOKEN",
+				"git.fullurl":          "https://github.com/foo/bar.git",
+				"git.sparsecheckout":   "[\"a/b\",\"cmd\"]",
+			},
+		},
+		{
+			name:       "sparse checkout globs",
+			st:         Git("github.com/foo/bar.git", "ref", GitSparseCheckout([]string{"cmd", "**/*.go"})),
+			identifier: "git://github.com/foo/bar.git#ref",
+			attrs: map[string]string{
+				"git.authheadersecret": "GIT_AUTH_HEADER",
+				"git.authtokensecret":  "GIT_AUTH_TOKEN",
+				"git.fullurl":          "https://github.com/foo/bar.git",
+				"git.sparsecheckout":   "[\"cmd\",\"**/*.go\"]",
+			},
+		},
 	}
+
+	t.Run("invalid sparse checkout pattern", func(t *testing.T) {
+		st := Git("github.com/foo/bar.git", "ref", GitSparseCheckout([]string{"../outside"}))
+		_, err := st.Marshal(t.Context())
+		require.Error(t, err)
+	})
 
 	for _, tc := range tcases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -507,9 +507,28 @@ func Git(url, fragment string, opts ...GitOption) State {
 		addCap(&gi.Constraints, pb.CapSourceGitCheckoutBundle)
 	}
 
+	var sparseErr error
+	if len(gi.SparseCheckout) > 0 {
+		sparse, err := gitutil.ParseSparseCheckoutPatterns(gi.SparseCheckout)
+		if err != nil {
+			sparseErr = err
+		} else {
+			dt, err := json.Marshal(slices.Concat(sparse.Directories, sparse.Patterns))
+			if err != nil {
+				sparseErr = err
+			} else {
+				attrs[pb.AttrGitSparseCheckout] = string(dt)
+				addCap(&gi.Constraints, pb.CapSourceGitSparseCheckout)
+			}
+		}
+	}
+
 	addCap(&gi.Constraints, pb.CapSourceGit)
 
 	source := NewSource("git://"+id, attrs, gi.Constraints)
+	if sparseErr != nil {
+		source.err = sparseErr
+	}
 	return NewState(source.Output())
 }
 
@@ -541,6 +560,7 @@ type GitInfo struct {
 	BundleOCIStoreID   string
 	CheckoutBundle     bool
 	FetchByCommit      bool
+	SparseCheckout     []string
 }
 
 func GitRef(v string) GitOption {
@@ -627,6 +647,18 @@ func GitChecksum(v string) GitOption {
 func GitFetchByCommit() GitOption {
 	return gitOptionFunc(func(gi *GitInfo) {
 		gi.FetchByCommit = true
+	})
+}
+
+// GitSparseCheckout limits the git worktree to the given paths. Each entry is
+// either a root-relative directory ("cmd", "a/b") which is included
+// recursively, or a git sparse-checkout glob such as "**/*.go". Parent
+// directories of selected paths are retained. When no patterns are given the
+// full worktree is checked out as usual. The rules participate in the source
+// cache identity, so changing them produces a new snapshot.
+func GitSparseCheckout(patterns []string) GitOption {
+	return gitOptionFunc(func(gi *GitInfo) {
+		gi.SparseCheckout = patterns
 	})
 }
 

@@ -29,6 +29,7 @@ type GitCLI struct {
 	sshAuthSock   string
 	sshKnownHosts string
 	hostGitConfig bool
+	env           []string
 }
 
 // Option provides a variadic option for configuring the git client.
@@ -115,6 +116,15 @@ func WithHostGitConfig() Option {
 	}
 }
 
+// WithEnvVar sets an extra environment variable in the KEY=VALUE form passed
+// to every git process. This is intended for plumbing overrides such as
+// GIT_INDEX_FILE when a caller needs a private index.
+func WithEnvVar(keyValue string) Option {
+	return func(b *GitCLI) {
+		b.env = append(b.env, keyValue)
+	}
+}
+
 type StreamFunc func(context.Context) (io.WriteCloser, io.WriteCloser, func())
 
 // WithStreams configures a callback for getting the streams for a command. The
@@ -139,7 +149,8 @@ func NewGitCLI(opts ...Option) *GitCLI {
 // with the given options applied on top.
 func (cli *GitCLI) New(opts ...Option) *GitCLI {
 	clone := *cli
-	clone.args = slices.Clone(cli.args)
+	clone.args = slices.Clone(clone.args)
+	clone.env = slices.Clone(clone.env)
 
 	for _, opt := range opts {
 		opt(&clone)
@@ -257,6 +268,8 @@ func (cli *GitCLI) Run(ctx context.Context, args ...string) (_ []byte, err error
 		if cli.sshAuthSock != "" {
 			cmd.Env = append(cmd.Env, "SSH_AUTH_SOCK="+cli.sshAuthSock)
 		}
+		// env overrides come last so they win over the values assembled above
+		cmd.Env = append(cmd.Env, cli.env...)
 
 		if cli.exec != nil {
 			// remote git commands spawn helper processes that inherit FDs and don't

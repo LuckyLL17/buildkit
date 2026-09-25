@@ -13,6 +13,7 @@ const AttrGitFetchByCommit = "git.fetchbycommit"
 const AttrGitBundle = "git.bundle"
 const AttrGitCheckoutBundle = "git.checkoutbundle"
 const AttrGitAdvice = "git.advice"
+const AttrGitSparseCheckout = "git.sparsecheckout"
 
 const AttrGitSignatureVerifyPubKey = "git.sig.pubkey"
 const AttrGitSignatureVerifyRejectExpired = "git.sig.rejectexpired"

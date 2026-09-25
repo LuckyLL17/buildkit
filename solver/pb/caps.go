@@ -38,6 +38,7 @@ const (
 	CapSourceGitFetchByCommit   apicaps.CapID = "source.git.fetchbycommit"
 	CapSourceGitBundle          apicaps.CapID = "source.git.bundle"
 	CapSourceGitCheckoutBundle  apicaps.CapID = "source.git.checkoutbundle"
+	CapSourceGitSparseCheckout  apicaps.CapID = "source.git.sparsecheckout"
 
 	CapSourceHTTP         apicaps.CapID = "source.http"
 	CapSourceHTTPAuth     apicaps.CapID = "source.http.auth"
@@ -653,6 +654,12 @@ func init() {
 
 	Caps.Init(apicaps.Cap{
 		ID:      CapHistoryFilters,
+		Enabled: true,
+		Status:  apicaps.CapStatusExperimental,
+	})
+
+	Caps.Init(apicaps.Cap{
+		ID:      CapSourceGitSparseCheckout,
 		Enabled: true,
 		Status:  apicaps.CapStatusExperimental,
 	})

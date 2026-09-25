@@ -2,7 +2,10 @@ package git
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -159,6 +162,17 @@ func (gs *Source) Identifier(scheme, ref string, attrs map[string]string, platfo
 			id.BundleOCISessionID = v
 		case pb.AttrOCILayoutStoreID:
 			id.BundleOCIStoreID = v
+		case pb.AttrGitSparseCheckout:
+			var patterns []string
+			if err := json.Unmarshal([]byte(v), &patterns); err != nil {
+				return nil, errors.Wrapf(err, "failed to parse %s", pb.AttrGitSparseCheckout)
+			}
+
+			sc, err := gitutil.ParseSparseCheckoutPatterns(patterns)
+			if err != nil {
+				return nil, err
+			}
+			id.SparseCheckout = sc
 		}
 	}
 	if err := validateGitRef(id.Ref); err != nil {
@@ -308,7 +322,28 @@ func (gs *gitSourceHandler) shaToCacheKey(sha, ref string) string {
 	if gs.src.CheckoutBundle {
 		key += "(bundle)"
 	}
+	if gs.src.SparseCheckout.Enabled() {
+		key += gs.sparseCheckoutCacheKeySuffix()
+	}
 	return key
+}
+
+// sparseCheckoutCacheKeySuffix makes the sparse-checkout rules part of the
+// source identity so cached snapshots always correspond to the currently
+// configured rules. The rules are already canonicalized, but a digest keeps
+// the key independent of how JSON escapes the individual patterns.
+func (gs *gitSourceHandler) sparseCheckoutCacheKeySuffix() string {
+	dt, _ := json.Marshal(struct {
+		Cone bool     `json:"cone"`
+		Dirs []string `json:"dirs,omitempty"`
+		Pats []string `json:"pats,omitempty"`
+	}{
+		Cone: gs.src.SparseCheckout.Cone(),
+		Dirs: gs.src.SparseCheckout.Directories,
+		Pats: gs.src.SparseCheckout.Patterns,
+	})
+	sum := sha256.Sum256(dt)
+	return "(sparse=" + hex.EncodeToString(sum[:]) + ")"
 }
 
 func (gs *Source) ResolveMetadata(ctx context.Context, id *GitIdentifier, sm *session.Manager, jobCtx solver.JobContext, opt MetadataOpts) (*Metadata, error) {
@@ -1199,6 +1234,10 @@ func (gs *gitSourceHandler) checkout(ctx context.Context, repo *gitRepo, g sessi
 		subdir = "."
 	}
 
+	// sparsePatternsFile and sparseIndexFile are only used by the
+	// non-keep-git-dir path, whose git dir is the shared bare repository.
+	var sparsePatternsFile, sparseIndexFile string
+
 	cd := checkoutDir
 	if gs.src.KeepGitDir && subdir == "." {
 		checkoutDirGit := filepath.Join(checkoutDir, ".git")
@@ -1213,6 +1252,13 @@ func (gs *gitSourceHandler) checkout(ctx context.Context, repo *gitRepo, g sessi
 		_, err = checkoutGit.Run(ctx, args...)
 		if err != nil {
 			return nil, err
+		}
+		if gs.src.SparseCheckout.Enabled() {
+			// Configure sparse-checkout before the fetch so the shallow
+			// ref fetch and resulting checkout use the same rules.
+			if err := initSparseCheckout(ctx, checkoutGit, gs.src.SparseCheckout); err != nil {
+				return nil, errors.Wrapf(err, "failed to enable sparse checkout for %s", urlutil.RedactCredentials(gs.src.Remote))
+			}
 		}
 		// Defense-in-depth: clone using the file protocol to disable local-clone
 		// optimizations which can be abused on some versions of Git to copy unintended
@@ -1276,17 +1322,62 @@ func (gs *gitSourceHandler) checkout(ctx context.Context, repo *gitRepo, g sessi
 				return nil, errors.Wrapf(err, "failed to create temporary checkout dir")
 			}
 		}
-		checkoutGit := git.New(gitutil.WithWorkTree(cd), gitutil.WithGitDir(gitDir))
-		_, err = checkoutGit.Run(ctx, "checkout", "--no-overlay", refOrCommit, "--", ".")
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to checkout remote %s", urlutil.RedactCredentials(gs.src.Remote))
+		opts := []gitutil.Option{gitutil.WithWorkTree(cd), gitutil.WithGitDir(gitDir)}
+		if gs.src.SparseCheckout.Enabled() {
+			// The git dir is the shared bare repository, so keep the index
+			// private to this checkout and write the sparse rules into a
+			// temporary file that is removed as soon as the worktree is
+			// populated. Sparse state never persists in the shared repo.
+			f, err := os.CreateTemp("", "buildkit-git-index-")
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to create temporary git index file")
+			}
+			sparseIndexFile = f.Name()
+			f.Close()
+			if err := os.Remove(sparseIndexFile); err != nil {
+				return nil, err
+			}
+			defer os.Remove(sparseIndexFile)
+			opts = append(opts, gitutil.WithEnvVar("GIT_INDEX_FILE="+sparseIndexFile))
+
+			patternFile, err := writeSparseCheckoutRules(gitDir, gs.src.SparseCheckout)
+			if err != nil {
+				return nil, err
+			}
+			sparsePatternsFile = patternFile
+			defer os.Remove(sparsePatternsFile)
+		}
+		checkoutGit := git.New(opts...)
+		if gs.src.SparseCheckout.Enabled() {
+			cone := "false"
+			if gs.src.SparseCheckout.Cone() {
+				cone = "true"
+			}
+			_, err = checkoutGit.Run(ctx, "-c", "core.sparseCheckout=true", "-c", "core.sparseCheckoutCone="+cone, "read-tree", "-mu", refOrCommit)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to checkout remote %s", urlutil.RedactCredentials(gs.src.Remote))
+			}
+		} else {
+			_, err = checkoutGit.Run(ctx, "checkout", "--no-overlay", refOrCommit, "--", ".")
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to checkout remote %s", urlutil.RedactCredentials(gs.src.Remote))
+			}
 		}
 	}
 
-	git = git.New(gitutil.WithWorkTree(cd), gitutil.WithGitDir(gitDir))
+	if gs.src.SparseCheckout.Enabled() && sparsePatternsFile == "" {
+		// keep-git-dir path: "git sparse-checkout init" wrote the rules into
+		// the checkout clone's own git dir.
+		sparsePatternsFile = filepath.Join(gitDir, "info", "sparse-checkout")
+	}
+
+	gitOpts := []gitutil.Option{gitutil.WithWorkTree(cd), gitutil.WithGitDir(gitDir)}
+	if sparseIndexFile != "" {
+		gitOpts = append(gitOpts, gitutil.WithEnvVar("GIT_INDEX_FILE="+sparseIndexFile))
+	}
+	git = git.New(gitOpts...)
 	if !gs.src.SkipSubmodules {
-		_, err = git.Run(ctx, "submodule", "update", "--init", "--recursive", "--depth=1")
-		if err != nil {
+		if err := gs.updateSubmodules(ctx, git, refOrCommit, sparsePatternsFile); err != nil {
 			return nil, errors.Wrapf(err, "failed to update submodules for %s", urlutil.RedactCredentials(gs.src.Remote))
 		}
 	}
@@ -1386,6 +1477,160 @@ func (gs *gitSourceHandler) checkout(ctx context.Context, repo *gitRepo, g sessi
 	}()
 
 	return snap, nil
+}
+
+// initSparseCheckout enables sparse-checkout in a fresh non-bare clone and
+// installs the canonical rules. It must run before the ref is fetched so the
+// subsequent shallow fetch and checkout honor the same rules.
+func initSparseCheckout(ctx context.Context, git *gitutil.GitCLI, sc gitutil.SparseCheckout) error {
+	mode := "--no-cone"
+	if sc.Cone() {
+		mode = "--cone"
+	}
+	if _, err := git.Run(ctx, "sparse-checkout", "init", mode); err != nil {
+		return err
+	}
+	// Cone mode accepts plain directories only; non-cone mode takes
+	// gitignore-style rules, with directory rules anchored at the root.
+	args := []string{"sparse-checkout", "set", "--"}
+	if sc.Cone() {
+		args = append(args, sc.Directories...)
+	} else {
+		args = append(args, sc.PatternArgs()...)
+	}
+	_, err := git.Run(ctx, args...)
+	return err
+}
+
+// writeSparseCheckoutRules writes the sparse-checkout rules file into a bare
+// repository's info directory and returns its path. The caller is responsible
+// for removing the file; no sparse-checkout config is persisted in the repo.
+func writeSparseCheckoutRules(gitDir string, sc gitutil.SparseCheckout) (string, error) {
+	infoDir := filepath.Join(gitDir, "info")
+	if err := os.MkdirAll(infoDir, 0755); err != nil {
+		return "", errors.Wrap(err, "failed to create git info directory")
+	}
+	patternFile := filepath.Join(infoDir, "sparse-checkout")
+	f, err := os.Create(patternFile)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to create sparse-checkout rules file")
+	}
+	if sc.Cone() {
+		err = sc.WriteConePatterns(f)
+	} else {
+		err = sc.WritePatterns(f)
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		os.Remove(patternFile)
+		return "", errors.Wrap(err, "failed to write sparse-checkout rules")
+	}
+	return patternFile, nil
+}
+
+// updateSubmodules initializes and updates submodules, restricted to the
+// paths selected by the sparse-checkout rules when sparse checkout is
+// enabled. Git does not skip submodules outside of the sparse cone on its
+// own, so the active gitlinks are filtered explicitly and passed as a
+// pathspec.
+func (gs *gitSourceHandler) updateSubmodules(ctx context.Context, git *gitutil.GitCLI, refOrCommit, patternFile string) error {
+	args := []string{"submodule", "update", "--init", "--recursive", "--depth=1"}
+	if gs.src.SparseCheckout.Enabled() {
+		submodules, err := listSubmodulePaths(ctx, git, refOrCommit)
+		if err != nil {
+			return err
+		}
+		if len(submodules) == 0 {
+			return nil
+		}
+		active, err := gs.activeSubmodulePaths(ctx, git, submodules, patternFile)
+		if err != nil {
+			return err
+		}
+		if len(active) == 0 {
+			return nil
+		}
+		if len(active) < len(submodules) {
+			args = append(args, "--")
+			args = append(args, active...)
+		}
+	}
+	_, err := git.Run(ctx, args...)
+	return err
+}
+
+// listSubmodulePaths lists root-level submodule gitlinks in the given tree.
+// Submodules nested inside another submodule are handled recursively by
+// "git submodule update --recursive" once their parent is active.
+func listSubmodulePaths(ctx context.Context, git *gitutil.GitCLI, refOrCommit string) ([]string, error) {
+	buf, err := git.Run(ctx, "ls-tree", refOrCommit)
+	if err != nil {
+		return nil, err
+	}
+	var submodules []string
+	for _, line := range strings.Split(strings.TrimSpace(string(buf)), "\n") {
+		if line == "" {
+			continue
+		}
+		meta, subpath, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(meta)
+		if len(fields) >= 2 && fields[0] == "160000" {
+			submodules = append(submodules, subpath)
+		}
+	}
+	return submodules, nil
+}
+
+// activeSubmodulePaths filters submodule paths against the sparse-checkout
+// rules. Cone mode is evaluated in-process from the canonical directories;
+// non-cone rules reuse git's pattern matcher through "git check-ignore" with
+// the rules file as the exclude file (a match means the path is included).
+func (gs *gitSourceHandler) activeSubmodulePaths(ctx context.Context, git *gitutil.GitCLI, submodules []string, patternFile string) ([]string, error) {
+	sc := gs.src.SparseCheckout
+	if sc.Cone() {
+		var active []string
+		for _, sub := range submodules {
+			if sc.ContainsPath(sub) {
+				active = append(active, sub)
+			}
+		}
+		return active, nil
+	}
+
+	args := []string{"-c", "core.excludesFile=" + patternFile, "check-ignore", "--no-index"}
+	for _, sub := range submodules {
+		// Submodules are directories; the trailing slash is required so
+		// that directory-only rules such as "cmd/" match.
+		args = append(args, sub+"/")
+	}
+	buf, err := git.Run(ctx, args...)
+	if err != nil {
+		// check-ignore exits 1 when none of the paths match.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return nil, nil
+		}
+		return nil, err
+	}
+	matched := make(map[string]bool)
+	for _, rec := range strings.Split(strings.TrimSpace(string(buf)), "\n") {
+		if rec == "" {
+			continue
+		}
+		matched[strings.TrimSuffix(rec, "/")] = true
+	}
+	var active []string
+	for _, sub := range submodules {
+		if matched[sub] {
+			active = append(active, sub)
+		}
+	}
+	return active, nil
 }
 
 // getCommitTime returns the committer timestamp of the resolved commit.
