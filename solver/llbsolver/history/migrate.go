@@ -9,6 +9,7 @@ import (
 	"github.com/containerd/containerd/v2/core/content"
 	"github.com/containerd/containerd/v2/core/leases"
 	cerrdefs "github.com/containerd/errdefs"
+	controlapi "github.com/moby/buildkit/api/services/control"
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/util/iohelper"
 	"github.com/moby/buildkit/util/leaseutil"
@@ -17,6 +18,40 @@ import (
 	"github.com/pkg/errors"
 	bolt "go.etcd.io/bbolt"
 )
+
+// migrateV3 journals every existing record as a COMPLETE event so that all
+// snapshot responses can issue cursors after the upgrade.
+func (h *Queue) migrateV3() error {
+	return h.opt.DB.Update(func(tx *bolt.Tx) error {
+		if _, err := tx.CreateBucketIfNotExists([]byte(eventsBucket)); err != nil {
+			return err
+		}
+		if b := tx.Bucket([]byte(recordsBucket)); b != nil {
+			if err := b.ForEach(func(key, dt []byte) error {
+				var br controlapi.BuildHistoryRecord
+				if err := br.UnmarshalVT(dt); err != nil {
+					return errors.Wrapf(err, "failed to unmarshal build record %s", key)
+				}
+				tm := br.CreatedAt.AsTime()
+				if br.CompletedAt != nil {
+					tm = br.CompletedAt.AsTime()
+				}
+				_, err := appendJournal(tx, &controlapi.BuildHistoryEvent{
+					Type:   controlapi.BuildHistoryEventType_COMPLETE,
+					Record: &br,
+				}, tm)
+				return err
+			}); err != nil {
+				return err
+			}
+		}
+		vb, err := tx.CreateBucketIfNotExists([]byte(versionBucket))
+		if err != nil {
+			return err
+		}
+		return vb.Put([]byte("version"), []byte("3"))
+	})
+}
 
 func (h *Queue) migrateV2() error {
 	ctx := context.Background()

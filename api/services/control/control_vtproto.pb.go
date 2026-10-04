@@ -564,6 +564,7 @@ func (m *BuildHistoryRequest) CloneVT() *BuildHistoryRequest {
 	r.Ref = m.Ref
 	r.EarlyExit = m.EarlyExit
 	r.Limit = m.Limit
+	r.Cursor = m.Cursor
 	if rhs := m.Filter; rhs != nil {
 		tmpContainer := make([]string, len(rhs))
 		copy(tmpContainer, rhs)
@@ -587,6 +588,7 @@ func (m *BuildHistoryEvent) CloneVT() *BuildHistoryEvent {
 	r := new(BuildHistoryEvent)
 	r.Type = m.Type
 	r.Record = m.Record.CloneVT()
+	r.Cursor = m.Cursor
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1607,6 +1609,9 @@ func (this *BuildHistoryRequest) EqualVT(that *BuildHistoryRequest) bool {
 	if this.Limit != that.Limit {
 		return false
 	}
+	if this.Cursor != that.Cursor {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -1627,6 +1632,9 @@ func (this *BuildHistoryEvent) EqualVT(that *BuildHistoryEvent) bool {
 		return false
 	}
 	if !this.Record.EqualVT(that.Record) {
+		return false
+	}
+	if this.Cursor != that.Cursor {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -3351,6 +3359,13 @@ func (m *BuildHistoryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Cursor) > 0 {
+		i -= len(m.Cursor)
+		copy(dAtA[i:], m.Cursor)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Cursor)))
+		i--
+		dAtA[i] = 0x32
+	}
 	if m.Limit != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Limit))
 		i--
@@ -3424,6 +3439,13 @@ func (m *BuildHistoryEvent) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Cursor) > 0 {
+		i -= len(m.Cursor)
+		copy(dAtA[i:], m.Cursor)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Cursor)))
+		i--
+		dAtA[i] = 0x1a
 	}
 	if m.Record != nil {
 		size, err := m.Record.MarshalToSizedBufferVT(dAtA[:i])
@@ -4583,6 +4605,10 @@ func (m *BuildHistoryRequest) SizeVT() (n int) {
 	if m.Limit != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Limit))
 	}
+	l = len(m.Cursor)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -4598,6 +4624,10 @@ func (m *BuildHistoryEvent) SizeVT() (n int) {
 	}
 	if m.Record != nil {
 		l = m.Record.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.Cursor)
+	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -8973,6 +9003,38 @@ func (m *BuildHistoryRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cursor", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Cursor = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -9078,6 +9140,38 @@ func (m *BuildHistoryEvent) UnmarshalVT(dAtA []byte) error {
 			if err := m.Record.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cursor", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Cursor = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

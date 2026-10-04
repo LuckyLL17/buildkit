@@ -187,6 +187,11 @@ message BuildHistoryRequest {
 	bool EarlyExit = 3;
 	repeated string Filter = 4;
 	int32 Limit = 5;
+	// Cursor is an optional resumption point returned by a previous call.
+	// When set, only events after the cursor are sent. A cursor that has
+	// expired or is invalid results in an error instead of falling back
+	// to a full snapshot.
+	string Cursor = 6;
 }
 
 enum BuildHistoryEventType {
@@ -198,6 +203,9 @@ enum BuildHistoryEventType {
 message BuildHistoryEvent {
 	BuildHistoryEventType type = 1;
 	BuildHistoryRecord record = 2;
+	// Cursor identifies this event and can be passed as BuildHistoryRequest.Cursor
+	// to receive only the events that follow it.
+	string Cursor = 3;
 }
 
 message BuildHistoryRecord {

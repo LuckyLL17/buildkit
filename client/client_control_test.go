@@ -2,8 +2,11 @@ package client
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	controlapi "github.com/moby/buildkit/api/services/control"
@@ -15,6 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func testCallInfo(t *testing.T, sb integration.Sandbox) {
@@ -164,4 +169,126 @@ type historyDisabled struct{}
 
 func (*historyDisabled) UpdateConfigFile(in string) (string, func() error) {
 	return in + "\n\n[history]\n  maxEntries = 0\n", nil
+}
+
+func testBuildHistoryCursor(t *testing.T, sb integration.Sandbox) {
+	c, err := New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+	cc := c.ControlClient()
+
+	solveBuild := func(ref string) {
+		def, err := llb.Scratch().File(llb.Mkfile("file", 0o644, nil)).Marshal(sb.Context())
+		require.NoError(t, err)
+		_, err = c.Solve(sb.Context(), def, SolveOpt{Ref: ref}, nil)
+		require.NoError(t, err)
+	}
+
+	refA := identity.NewID()
+	refB := identity.NewID()
+	solveBuild(refA)
+	solveBuild(refB)
+
+	list := func(cursor string) controlapi.Control_ListenBuildHistoryClient {
+		cl, err := cc.ListenBuildHistory(sb.Context(), &controlapi.BuildHistoryRequest{
+			EarlyExit: true,
+			Cursor:    cursor,
+		})
+		require.NoError(t, err)
+		return cl
+	}
+	drain := func(cl controlapi.Control_ListenBuildHistoryClient) []*controlapi.BuildHistoryEvent {
+		var out []*controlapi.BuildHistoryEvent
+		for {
+			ev, err := cl.Recv()
+			if errors.Is(err, io.EOF) {
+				return out
+			}
+			require.NoError(t, err)
+			out = append(out, ev)
+		}
+	}
+	refs := func(events []*controlapi.BuildHistoryEvent) []string {
+		out := make([]string, 0, len(events))
+		for _, ev := range events {
+			out = append(out, ev.Record.Ref)
+		}
+		return out
+	}
+
+	// initial snapshot, the cursor with the highest sequence marks the resume point
+	snapshot := drain(list(""))
+	assert.ElementsMatch(t, []string{refA, refB}, refs(snapshot))
+	lastCursor := maxHistoryCursor(t, snapshot)
+	require.NotEmpty(t, lastCursor)
+	for _, ev := range snapshot {
+		require.NotEmpty(t, ev.Cursor)
+	}
+
+	// no new events: resuming returns an empty, consistent boundary
+	require.Empty(t, drain(list(lastCursor)))
+
+	// one new build and one deletion happen while disconnected
+	refC := identity.NewID()
+	solveBuild(refC)
+	_, err = cc.UpdateBuildHistory(sb.Context(), &controlapi.UpdateBuildHistoryRequest{
+		Ref:    refA,
+		Delete: true,
+	})
+	require.NoError(t, err)
+
+	caughtUp := drain(list(lastCursor))
+	// catch-up contains STARTED+COMPLETE of refC and DELETED of refA
+	var (
+		sawStartedC bool
+		hasDeleted  bool
+	)
+	for _, ev := range caughtUp {
+		if ev.Type == controlapi.BuildHistoryEventType_STARTED && ev.Record.Ref == refC {
+			sawStartedC = true
+		}
+		if ev.Type == controlapi.BuildHistoryEventType_DELETED && ev.Record.Ref == refA {
+			hasDeleted = true
+		}
+	}
+	assert.True(t, sawStartedC, "expected STARTED event for %s", refC)
+	assert.True(t, hasDeleted, "expected DELETED event for %s", refA)
+
+	// retrying the same cursor yields the same boundary set
+	retry := drain(list(lastCursor))
+	assert.Equal(t, refs(caughtUp), refs(retry))
+
+	// malformed and unknown cursors are explicit errors, never a silent full read
+	for _, cursor := range []string{"bad", "bkh_bad"} {
+		cl, err := cc.ListenBuildHistory(sb.Context(), &controlapi.BuildHistoryRequest{Cursor: cursor})
+		require.NoError(t, err)
+		_, err = cl.Recv()
+		assert.Equal(t, codes.InvalidArgument, status.Code(err))
+	}
+}
+
+type historyCursorData struct {
+	Seq uint64 `json:"seq"`
+}
+
+// maxHistoryCursor returns the cursor with the highest sequence.
+func maxHistoryCursor(t *testing.T, events []*controlapi.BuildHistoryEvent) string {
+	t.Helper()
+	var (
+		out    string
+		maxSeq uint64
+	)
+	for _, ev := range events {
+		if !strings.HasPrefix(ev.Cursor, "bkh_") {
+			continue
+		}
+		dt, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(ev.Cursor, "bkh_"))
+		require.NoError(t, err)
+		var c historyCursorData
+		require.NoError(t, json.Unmarshal(dt, &c))
+		if c.Seq > maxSeq {
+			maxSeq, out = c.Seq, ev.Cursor
+		}
+	}
+	return out
 }

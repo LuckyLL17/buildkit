@@ -1,8 +1,11 @@
 package debug
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -22,6 +25,10 @@ var HistoriesCommand = &cli.Command{
 			Name:  "format",
 			Usage: "Format the output using the given Go template, e.g, '{{json .}}'",
 		},
+		&cli.StringFlag{
+			Name:  "cursor",
+			Usage: "Resume from a cursor returned by a previous call",
+		},
 	},
 }
 
@@ -34,6 +41,7 @@ func histories(clicontext *cli.Command) error {
 	ctx := appcontext.Context()
 	resp, err := c.ControlClient().ListenBuildHistory(ctx, &controlapi.BuildHistoryRequest{
 		EarlyExit: true,
+		Cursor:    clicontext.String("cursor"),
 	})
 	if err != nil {
 		return err
@@ -66,12 +74,20 @@ func histories(clicontext *cli.Command) error {
 func printRecordsTable(w io.Writer, eventReceiver controlapi.Control_ListenBuildHistoryClient) error {
 	tw := tabwriter.NewWriter(w, 1, 8, 1, '\t', 0)
 	fmt.Fprintln(tw, "TYPE\tREF\tCREATED\tCOMPLETED\tGENERATION\tPINNED")
+	var (
+		nextCursor string
+		maxSeq     uint64
+	)
 	for {
 		ev, err := eventReceiver.Recv()
 		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			return err
+		}
+		if seq, ok := cursorSequence(ev.Cursor); ok && seq > maxSeq {
+			maxSeq = seq
+			nextCursor = ev.Cursor
 		}
 		var (
 			ref         string
@@ -96,5 +112,26 @@ func printRecordsTable(w io.Writer, eventReceiver controlapi.Control_ListenBuild
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\n", ev.Type, ref, createdAt, completedAt, generation, pinned)
 		tw.Flush()
 	}
-	return tw.Flush()
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(w, "next cursor: %s\n", nextCursor)
+	return err
+}
+
+func cursorSequence(cursor string) (uint64, bool) {
+	if !strings.HasPrefix(cursor, "bkh_") {
+		return 0, false
+	}
+	dt, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(cursor, "bkh_"))
+	if err != nil {
+		return 0, false
+	}
+	var c struct {
+		Seq uint64 `json:"seq"`
+	}
+	if err := json.Unmarshal(dt, &c); err != nil {
+		return 0, false
+	}
+	return c.Seq, true
 }

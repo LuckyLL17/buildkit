@@ -1436,12 +1436,17 @@ func (x *InfoResponse) GetBuildkitVersion() *types.BuildkitVersion {
 }
 
 type BuildHistoryRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ActiveOnly    bool                   `protobuf:"varint,1,opt,name=ActiveOnly,proto3" json:"ActiveOnly,omitempty"`
-	Ref           string                 `protobuf:"bytes,2,opt,name=Ref,proto3" json:"Ref,omitempty"`
-	EarlyExit     bool                   `protobuf:"varint,3,opt,name=EarlyExit,proto3" json:"EarlyExit,omitempty"`
-	Filter        []string               `protobuf:"bytes,4,rep,name=Filter,proto3" json:"Filter,omitempty"`
-	Limit         int32                  `protobuf:"varint,5,opt,name=Limit,proto3" json:"Limit,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	ActiveOnly bool                   `protobuf:"varint,1,opt,name=ActiveOnly,proto3" json:"ActiveOnly,omitempty"`
+	Ref        string                 `protobuf:"bytes,2,opt,name=Ref,proto3" json:"Ref,omitempty"`
+	EarlyExit  bool                   `protobuf:"varint,3,opt,name=EarlyExit,proto3" json:"EarlyExit,omitempty"`
+	Filter     []string               `protobuf:"bytes,4,rep,name=Filter,proto3" json:"Filter,omitempty"`
+	Limit      int32                  `protobuf:"varint,5,opt,name=Limit,proto3" json:"Limit,omitempty"`
+	// Cursor is an optional resumption point returned by a previous call.
+	// When set, only events after the cursor are sent. A cursor that has
+	// expired or is invalid results in an error instead of falling back
+	// to a full snapshot.
+	Cursor        string `protobuf:"bytes,6,opt,name=Cursor,proto3" json:"Cursor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1511,10 +1516,20 @@ func (x *BuildHistoryRequest) GetLimit() int32 {
 	return 0
 }
 
+func (x *BuildHistoryRequest) GetCursor() string {
+	if x != nil {
+		return x.Cursor
+	}
+	return ""
+}
+
 type BuildHistoryEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          BuildHistoryEventType  `protobuf:"varint,1,opt,name=type,proto3,enum=moby.buildkit.v1.BuildHistoryEventType" json:"type,omitempty"`
-	Record        *BuildHistoryRecord    `protobuf:"bytes,2,opt,name=record,proto3" json:"record,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Type   BuildHistoryEventType  `protobuf:"varint,1,opt,name=type,proto3,enum=moby.buildkit.v1.BuildHistoryEventType" json:"type,omitempty"`
+	Record *BuildHistoryRecord    `protobuf:"bytes,2,opt,name=record,proto3" json:"record,omitempty"`
+	// Cursor identifies this event and can be passed as BuildHistoryRequest.Cursor
+	// to receive only the events that follow it.
+	Cursor        string `protobuf:"bytes,3,opt,name=Cursor,proto3" json:"Cursor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1561,6 +1576,13 @@ func (x *BuildHistoryEvent) GetRecord() *BuildHistoryRecord {
 		return x.Record
 	}
 	return nil
+}
+
+func (x *BuildHistoryEvent) GetCursor() string {
+	if x != nil {
+		return x.Cursor
+	}
+	return ""
 }
 
 type BuildHistoryRecord struct {
@@ -2172,7 +2194,7 @@ const file_github_com_moby_buildkit_api_services_control_control_proto_rawDesc =
 	"\x06record\x18\x01 \x03(\v2$.moby.buildkit.v1.types.WorkerRecordR\x06record\"\r\n" +
 	"\vInfoRequest\"a\n" +
 	"\fInfoResponse\x12Q\n" +
-	"\x0fbuildkitVersion\x18\x01 \x01(\v2'.moby.buildkit.v1.types.BuildkitVersionR\x0fbuildkitVersion\"\x93\x01\n" +
+	"\x0fbuildkitVersion\x18\x01 \x01(\v2'.moby.buildkit.v1.types.BuildkitVersionR\x0fbuildkitVersion\"\xab\x01\n" +
 	"\x13BuildHistoryRequest\x12\x1e\n" +
 	"\n" +
 	"ActiveOnly\x18\x01 \x01(\bR\n" +
@@ -2180,10 +2202,12 @@ const file_github_com_moby_buildkit_api_services_control_control_proto_rawDesc =
 	"\x03Ref\x18\x02 \x01(\tR\x03Ref\x12\x1c\n" +
 	"\tEarlyExit\x18\x03 \x01(\bR\tEarlyExit\x12\x16\n" +
 	"\x06Filter\x18\x04 \x03(\tR\x06Filter\x12\x14\n" +
-	"\x05Limit\x18\x05 \x01(\x05R\x05Limit\"\x8e\x01\n" +
+	"\x05Limit\x18\x05 \x01(\x05R\x05Limit\x12\x16\n" +
+	"\x06Cursor\x18\x06 \x01(\tR\x06Cursor\"\xa6\x01\n" +
 	"\x11BuildHistoryEvent\x12;\n" +
 	"\x04type\x18\x01 \x01(\x0e2'.moby.buildkit.v1.BuildHistoryEventTypeR\x04type\x12<\n" +
-	"\x06record\x18\x02 \x01(\v2$.moby.buildkit.v1.BuildHistoryRecordR\x06record\"\xd3\t\n" +
+	"\x06record\x18\x02 \x01(\v2$.moby.buildkit.v1.BuildHistoryRecordR\x06record\x12\x16\n" +
+	"\x06Cursor\x18\x03 \x01(\tR\x06Cursor\"\xd3\t\n" +
 	"\x12BuildHistoryRecord\x12\x10\n" +
 	"\x03Ref\x18\x01 \x01(\tR\x03Ref\x12\x1a\n" +
 	"\bFrontend\x18\x02 \x01(\tR\bFrontend\x12]\n" +
